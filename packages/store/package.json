@@ -1,0 +1,22 @@
+{
+  "name": "dsh-gateway-store",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Persistence seam (IStore) + domain types for the gateway control plane.",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dsh-gateway-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^3.0.5"
+  }
+}
