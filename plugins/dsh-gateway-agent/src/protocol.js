@@ -8,6 +8,13 @@ export const PROTOCOL_VERSION = 1
 export const HEARTBEAT_INTERVAL_MS = 15_000
 export const LEASE_TTL_MS = 45_000
 
+/** Outbound reconnect backoff bounds (ms); mirrors packages/protocol. */
+export const RECONNECT_BASE_MS = 1_000
+export const RECONNECT_MAX_MS = 30_000
+
+/** Half-open watchdog: close a silent-but-open socket after this much silence. */
+export const HALF_OPEN_TIMEOUT_MS = LEASE_TTL_MS * 2
+
 export const ControlType = Object.freeze({
   CHALLENGE: 'challenge',
   CHALLENGE_RESPONSE: 'challenge_response',

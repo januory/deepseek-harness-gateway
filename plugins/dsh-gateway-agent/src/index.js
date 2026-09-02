@@ -12,6 +12,9 @@ import WebSocket from 'ws'
 import {
   PROTOCOL_VERSION,
   HEARTBEAT_INTERVAL_MS,
+  RECONNECT_BASE_MS,
+  RECONNECT_MAX_MS,
+  HALF_OPEN_TIMEOUT_MS,
   ControlType,
   DataType,
   DataKind,
@@ -20,6 +23,7 @@ import {
   BinaryFrameParser,
 } from './protocol.js'
 import { configDir, createConfigStore, sanitizeConfig, CLIENT_FIELDS } from './config.js'
+import { nextBackoff, backoffDelay } from './backoff.js'
 
 export const name = 'dsh-gateway-agent'
 
@@ -68,6 +72,10 @@ class Connection {
     this.nodeKey = ''
     this.lastError = null
     this.heartbeat = null
+    this.watchdog = null
+    this.reconnectTimer = null
+    this.backoffMs = RECONNECT_BASE_MS
+    this.lastSeen = 0
     this.operatorCookie = ''
     this.dshPort = 3080
     this.onState = onState
@@ -116,8 +124,12 @@ class Connection {
       return
     }
     this.ws = ws
+    this.lastSeen = Date.now()
+    this.startWatchdog(ws)
 
     ws.on('message', (raw, isBinary) => {
+      if (this.ws !== ws) return // stale socket superseded by a newer connect
+      this.lastSeen = Date.now()
       const data = Buffer.isBuffer(raw) ? raw : Buffer.from(raw)
       if (!isBinary) console.log('[dsh-gateway-agent] msg:', data.toString('utf8').slice(0, 80))
       if (isBinary) {
@@ -152,10 +164,12 @@ class Connection {
       } else if (msg.type === ControlType.REGISTRATION_STATUS) {
         if (msg.payload.state === 'approved') {
           this.machineId = msg.payload.machineId
+          this.backoffMs = RECONNECT_BASE_MS // reset backoff on a successful (re)join
           this.setState('online')
           this.startHeartbeat(ws)
         } else if (msg.payload.state === 'pending') {
           this.machineId = msg.payload.machineId
+          this.backoffMs = RECONNECT_BASE_MS
           if (msg.payload.nodeKey) this.persistIdentity(msg.payload.machineId, msg.payload.nodeKey)
           this.setState('pending')
           this.startHeartbeat(ws) // keep the lease alive while awaiting approval
@@ -177,11 +191,13 @@ class Connection {
     })
 
     ws.on('close', (closeCode) => {
+      if (this.ws !== ws) return // stale socket; a newer connect already took over
       this.setState('error')
       this.lastError = 'connection closed (' + closeCode + ')'
       this.scheduleReconnect(gatewayUrl, code, config)
     })
     ws.on('error', (e) => {
+      if (this.ws !== ws) return
       this.lastError = e && e.message ? e.message : String(e)
       this.setState('error')
     })
@@ -189,12 +205,25 @@ class Connection {
 
   scheduleReconnect(gatewayUrl, code, config) {
     this.stop()
-    setTimeout(() => this.connect(gatewayUrl, code, config), 5000)
+    // Exponential backoff with jitter; reset only after a successful (re)join.
+    const delay = backoffDelay(this.backoffMs, RECONNECT_MAX_MS)
+    this.backoffMs = nextBackoff(this.backoffMs, RECONNECT_MAX_MS)
+    this.reconnectTimer = setTimeout(() => this.connect(gatewayUrl, code, config), delay)
   }
 
   stop() {
-    if (this.heartbeat) clearInterval(this.heartbeat)
-    this.heartbeat = null
+    if (this.heartbeat) {
+      clearInterval(this.heartbeat)
+      this.heartbeat = null
+    }
+    if (this.watchdog) {
+      clearInterval(this.watchdog)
+      this.watchdog = null
+    }
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
     if (this.ws) {
       try {
         this.ws.close()
@@ -203,6 +232,16 @@ class Connection {
       }
       this.ws = null
     }
+  }
+
+  /** Close the socket if the gateway has been silent past the watchdog window. */
+  startWatchdog(ws) {
+    if (this.watchdog) clearInterval(this.watchdog)
+    this.watchdog = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN && Date.now() - this.lastSeen > HALF_OPEN_TIMEOUT_MS) {
+        ws.close(4006, 'half-open connection')
+      }
+    }, HEARTBEAT_INTERVAL_MS)
   }
 
   startHeartbeat(ws) {

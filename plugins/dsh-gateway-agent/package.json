@@ -15,7 +15,7 @@
   },
   "scripts": {
     "build": "node -e \"console.log('dsh-gateway-agent: no build (plain JS)')\"",
-    "test": "node test/secrets.test.js",
+    "test": "node test/secrets.test.js && node test/backoff.test.js",
     "typecheck": "node -e \"console.log('dsh-gateway-agent: plain JS, typecheck skipped')\""
   },
   "dsh": {
