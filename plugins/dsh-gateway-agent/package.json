@@ -14,7 +14,9 @@
     "ws": "^8.18.0"
   },
   "scripts": {
-    "test": "node -e \"console.log('dsh-gateway-agent: 待实现测试')\""
+    "build": "node -e \"console.log('dsh-gateway-agent: no build (plain JS)')\"",
+    "test": "node test/secrets.test.js",
+    "typecheck": "node -e \"console.log('dsh-gateway-agent: plain JS, typecheck skipped')\""
   },
   "dsh": {
     "bundle": {

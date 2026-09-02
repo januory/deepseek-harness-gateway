@@ -1,14 +1,13 @@
 // dsh-gateway-agent — host half（Node 面）。
 //
-// P0：出站 wss + HMAC 入网握手 + 心跳/租约 + 数据面 HTTP 中继（把网关转发的
-// 浏览器请求打到本机 dsh web，重写 Host 为 loopback，注入机器操作员凭据）。
-// WS/SSE 流式中继与凭据的完整托管在下一增量（ADR-0003/0004）。
+// 出站 wss 入网（配对码 / 节点密钥）+ 心跳/租约 + 数据面 HTTP/WS 中继（把网关
+// 转发的浏览器请求打到本机 dsh web，重写 Host 为 loopback，注入机器操作员凭据）。
+// 节点密钥在 config.json 里 AES-256-GCM 加密落盘，内存中明文仅存于本进程，
+// 出 wire 前一律 sanitize 成布尔（ADR-0010 §6）。
 // 铁律（参照 dsh-remote-workspaces）：不 import @deepseek-ai/* 内部包。
 
 import http from 'node:http'
-import { homedir, hostname } from 'node:os'
-import { join, resolve } from 'node:path'
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { hostname } from 'node:os'
 import WebSocket from 'ws'
 import {
   PROTOCOL_VERSION,
@@ -20,6 +19,7 @@ import {
   encodeBinaryFrame,
   BinaryFrameParser,
 } from './protocol.js'
+import { configDir, createConfigStore, sanitizeConfig, CLIENT_FIELDS } from './config.js'
 
 export const name = 'dsh-gateway-agent'
 
@@ -27,31 +27,8 @@ const PACKAGE = 'dsh-gateway-agent'
 const NAMESPACE = 'gatewayAgent'
 
 // ---------------------------------------------------------------------------
-// Config (plain JSON for P0; AES-GCM secret handling per ADR-0010 lands next).
+// Config: self-owned JSON via config.js (sealed secrets + browser-safe sanitize).
 // ---------------------------------------------------------------------------
-function configDir() {
-  const fromEnv = process.env.DSH_HOME
-  const base = fromEnv && String(fromEnv).trim().length > 0 ? resolve(fromEnv) : join(homedir(), '.dsh')
-  return join(base, PACKAGE)
-}
-function configPath() {
-  return join(configDir(), 'config.json')
-}
-function loadConfig() {
-  try {
-    if (existsSync(configPath())) {
-      const raw = readFileSync(configPath(), 'utf8').replace(/^\uFEFF/, '')
-      return JSON.parse(raw)
-    }
-  } catch {
-    /* ignore corrupt config */
-  }
-  return {}
-}
-function saveConfig(cfg) {
-  mkdirSync(configDir(), { recursive: true })
-  writeFileSync(configPath(), JSON.stringify(cfg, null, 2), { mode: 0o600 })
-}
 
 /**
  * Programmatically mint the operator browser-session cookie for loopback
@@ -84,7 +61,7 @@ export function mintOperatorCookie(connection, dshPort) {
 // Outbound connection + data-plane bridge.
 // ---------------------------------------------------------------------------
 class Connection {
-  constructor(onState, mintCookie) {
+  constructor(onState, mintCookie, configStore) {
     this.ws = null
     this.state = 'unconfigured'
     this.machineId = null
@@ -92,10 +69,10 @@ class Connection {
     this.lastError = null
     this.heartbeat = null
     this.operatorCookie = ''
-    this.configOperatorCookie = ''
     this.dshPort = 3080
     this.onState = onState
     this.mintCookie = typeof mintCookie === 'function' ? mintCookie : null
+    this.configStore = configStore
     this.parser = new BinaryFrameParser()
     this.pendingBodies = new Map() // channel -> { expected, chunks }
     this.wsUpstreams = new Map() // channel -> { u, queue }
@@ -113,7 +90,6 @@ class Connection {
       return
     }
     this.dshPort = (config && config.dshPort) || 3080
-    this.configOperatorCookie = (config && config.operatorCookie) || ''
     // Persisted node identity (issued on first onboarding); used to reconnect.
     this.machineId = (config && config.machineId) || null
     this.nodeKey = (config && config.nodeKey) || ''
@@ -243,8 +219,9 @@ class Connection {
   persistIdentity(machineId, nodeKey) {
     this.machineId = machineId
     this.nodeKey = nodeKey
+    if (!this.configStore) return
     try {
-      saveConfig({ ...loadConfig(), machineId, nodeKey })
+      this.configStore.write({ ...this.configStore.read(), machineId, nodeKey })
     } catch {
       /* ignore */
     }
@@ -277,7 +254,7 @@ class Connection {
   }
 
   effectiveCookie() {
-    return this.operatorCookie || this.configOperatorCookie
+    return this.operatorCookie
   }
 
   forwardUpstream(ws, channel, method, path, headers, body, retried) {
@@ -402,7 +379,8 @@ const INVOCATIONS = [
 // Plugin entry.
 // ---------------------------------------------------------------------------
 export default function apply(ctx) {
-  const cfg = loadConfig()
+  const configStore = createConfigStore(configDir())
+  const cfg = configStore.read()
   const dshPort = cfg.dshPort || 3080
 
   let connectionService = null
@@ -417,26 +395,31 @@ export default function apply(ctx) {
     return undefined
   }
 
-  const conn = new Connection(() => {}, mintCookie)
+  const conn = new Connection(() => {}, mintCookie, configStore)
 
   const service = {
     async status() {
       return { ok: true, value: conn.status() }
     },
     async getConfig() {
-      return { ok: true, value: loadConfig() }
+      return { ok: true, value: sanitizeConfig(configStore.read()) }
     },
     async applyConfig(config) {
-      const cfg = { ...loadConfig(), ...(config || {}) }
-      saveConfig(cfg)
-      return { ok: true, value: { applied: true } }
+      // Only client-writable fields are accepted; node identity is server-authoritative.
+      const current = configStore.read()
+      const next = { ...current }
+      for (const field of CLIENT_FIELDS) {
+        if (config && config[field] !== undefined) next[field] = config[field]
+      }
+      configStore.write(next)
+      return { ok: true, value: { applied: true, config: sanitizeConfig(next) } }
     },
     async onboard(gatewayUrl, pairingCode) {
       // Fresh onboarding: drop any prior node identity so the pairing code is used.
-      const cfg = { ...loadConfig(), gatewayUrl, pairingCode }
+      const cfg = { ...configStore.read(), gatewayUrl, pairingCode }
       delete cfg.machineId
       delete cfg.nodeKey
-      saveConfig(cfg)
+      configStore.write(cfg)
       conn.connect(gatewayUrl, pairingCode, cfg)
       return { ok: true, value: conn.status() }
     },
