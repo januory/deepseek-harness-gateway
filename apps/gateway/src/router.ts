@@ -46,42 +46,47 @@ export async function relayHttp(
 }
 
 export function registerRouter(app: FastifyInstance, registry: NodeRegistry): void {
-  // Accept any content type as a raw Buffer (the node re-serializes upstream).
-  // `application/json` is registered explicitly because Fastify's built-in JSON
-  // parser would otherwise win over `*` and turn the body into an object.
-  const rawBodyParser = (request: any, payload: any, done: (e: Error | null, body?: Buffer) => void) => {
-    const chunks: Buffer[] = []
-    payload.on('data', (c: Buffer) => chunks.push(c))
-    payload.on('end', () => done(null, Buffer.concat(chunks)))
-    payload.on('error', (e: Error) => done(e))
-  }
-  app.addContentTypeParser('*', rawBodyParser)
-  app.addContentTypeParser('application/json', rawBodyParser)
+  // Register the relay under its own encapsulated scope so the raw-buffer body
+  // parser only applies here — control-plane routes (app-level) keep Fastify's
+  // default JSON parsing.
+  app.register(async (scoped) => {
+    // Accept any content type as a raw Buffer (the node re-serializes upstream).
+    // `application/json` is registered explicitly because Fastify's built-in JSON
+    // parser would otherwise win over `*` and turn the body into an object.
+    const rawBodyParser = (request: any, payload: any, done: (e: Error | null, body?: Buffer) => void) => {
+      const chunks: Buffer[] = []
+      payload.on('data', (c: Buffer) => chunks.push(c))
+      payload.on('end', () => done(null, Buffer.concat(chunks)))
+      payload.on('error', (e: Error) => done(e))
+    }
+    scoped.addContentTypeParser('*', rawBodyParser)
+    scoped.addContentTypeParser('application/json', rawBodyParser)
 
-  for (const method of FORWARD_METHODS) {
-    app.route({
-      method,
-      url: '/console/:machineId/*',
-      handler: (req, reply) =>
-        relayHttp(registry, (req.params as any).machineId, req, reply, '/' + ((req.params as any)['*'] || '') + queryString(req)),
-    })
-    app.route({
-      method,
-      url: '/console/:machineId',
-      handler: (req, reply) => relayHttp(registry, (req.params as any).machineId, req, reply, '/' + queryString(req)),
-    })
-  }
+    for (const method of FORWARD_METHODS) {
+      scoped.route({
+        method,
+        url: '/console/:machineId/*',
+        handler: (req, reply) =>
+          relayHttp(registry, (req.params as any).machineId, req, reply, '/' + ((req.params as any)['*'] || '') + queryString(req)),
+      })
+      scoped.route({
+        method,
+        url: '/console/:machineId',
+        handler: (req, reply) => relayHttp(registry, (req.params as any).machineId, req, reply, '/' + queryString(req)),
+      })
+    }
 
-  // Single-node passthrough: relay absolute dsh paths (/api, /plugins, /assets, …).
-  for (const method of FORWARD_METHODS) {
-    app.route({
-      method,
-      url: '/*',
-      handler: async (req, reply) => {
-        const mid = registry.singleNodeId()
-        if (!mid) return reply.code(503).send({ error: 'no connected node' })
-        await relayHttp(registry, mid, req, reply, req.raw.url ?? '/')
-      },
-    })
-  }
+    // Single-node passthrough: relay absolute dsh paths (/api, /plugins, /assets, …).
+    for (const method of FORWARD_METHODS) {
+      scoped.route({
+        method,
+        url: '/*',
+        handler: async (req, reply) => {
+          const mid = registry.singleNodeId()
+          if (!mid) return reply.code(503).send({ error: 'no connected node' })
+          await relayHttp(registry, mid, req, reply, req.raw.url ?? '/')
+        },
+      })
+    }
+  })
 }

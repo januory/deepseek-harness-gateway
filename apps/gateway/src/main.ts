@@ -7,18 +7,29 @@ import { PROTOCOL_VERSION } from 'dsh-gateway-protocol'
 import { SqliteStore } from 'dsh-gateway-store'
 import { NodeRegistry } from './nodes.js'
 import { registerRouter } from './router.js'
+import { buildAuth, bootstrap } from './auth.js'
 
 const HOST = process.env.GATEWAY_HOST ?? '127.0.0.1'
 const PORT = Number(process.env.GATEWAY_PORT ?? 3300)
 // Durable SQLite store (ADR-0007). Defaults to ./gateway.db; set GATEWAY_DB_PATH
 // to ':memory:' for a throwaway run or to a custom file path.
 const DB_PATH = process.env.GATEWAY_DB_PATH ?? './gateway.db'
+// Bootstrap platform admin (created on first run).
+const ADMIN_ID = process.env.GATEWAY_ADMIN_ID ?? 'admin'
+const ADMIN_PASSWORD = process.env.GATEWAY_ADMIN_PASSWORD ?? 'admin'
 
 const app = Fastify({ logger: true })
 
 const store = new SqliteStore({ filename: DB_PATH })
 await store.open()
 
+// Ensure the bootstrap platform admin + default tenant exist.
+await bootstrap(store, { adminId: ADMIN_ID, adminPassword: ADMIN_PASSWORD })
+if (process.env.GATEWAY_ADMIN_PASSWORD === undefined) {
+  app.log.warn('using default bootstrap admin password ("admin") — set GATEWAY_ADMIN_PASSWORD in production')
+}
+
+const auth = buildAuth()
 const registry = new NodeRegistry(store)
 
 // Seed one-time pairing codes for testing: GATEWAY_PAIRING_CODES="code:tenantId,..."
@@ -30,6 +41,9 @@ registry.start()
 
 // Console HTTP relay → node → local dsh web.
 registerRouter(app, registry)
+
+// Portal-user auth (session cookie + login/logout/me).
+await auth.register(app, store)
 
 app.get('/health', async () => ({
   ok: true,
