@@ -338,6 +338,7 @@ export class NodeRegistry {
         if (!node) return ws.close(4004, 'unknown machine')
         node.leaseExpiry = Date.now() + LEASE_TTL_MS
         ws.send(JSON.stringify({ v: PROTOCOL_VERSION, type: 'lease', payload: { ttlMs: LEASE_TTL_MS } }))
+        this.recordHeartbeat(msg.payload).catch((e) => console.log('[gateway] heartbeat persist ERROR:', (e as Error).message ?? e))
         return
       }
 
@@ -382,6 +383,16 @@ export class NodeRegistry {
   private handleDataFrame(channel: number, data: Buffer): void {
     const p = this.pending.get(channel)
     if (p) p.chunks.push(data)
+  }
+
+  /** Persist durable health metadata on each heartbeat (accurate "last seen" + version). */
+  private async recordHeartbeat(payload: { machineId?: string; dshVersion?: string }): Promise<void> {
+    if (!payload?.machineId) return
+    const m = await this.store.getMachine(payload.machineId)
+    if (!m) return
+    const patch = { ...m, lastHeartbeatAt: new Date().toISOString() }
+    if (typeof payload.dshVersion === 'string' && payload.dshVersion) patch.dshVersion = payload.dshVersion
+    await this.store.upsertMachine(patch)
   }
 
   /** Returns the authenticated machine id, its tenant, and its live status. */

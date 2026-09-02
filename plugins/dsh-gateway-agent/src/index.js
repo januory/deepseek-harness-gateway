@@ -29,6 +29,8 @@ export const name = 'dsh-gateway-agent'
 
 const PACKAGE = 'dsh-gateway-agent'
 const NAMESPACE = 'gatewayAgent'
+// Keep in sync with package.json "version".
+const AGENT_VERSION = '0.1.0'
 
 // ---------------------------------------------------------------------------
 // Config: self-owned JSON via config.js (sealed secrets + browser-safe sanitize).
@@ -78,6 +80,9 @@ class Connection {
     this.lastSeen = 0
     this.operatorCookie = ''
     this.dshPort = 3080
+    this.dshVersion = ''
+    this.rttMs = null
+    this.lastHeartbeatSentAt = 0
     this.onState = onState
     this.mintCookie = typeof mintCookie === 'function' ? mintCookie : null
     this.configStore = configStore
@@ -98,6 +103,7 @@ class Connection {
       return
     }
     this.dshPort = (config && config.dshPort) || 3080
+    this.dshVersion = (config && config.dshVersion) || ''
     // Persisted node identity (issued on first onboarding); used to reconnect.
     this.machineId = (config && config.machineId) || null
     this.nodeKey = (config && config.nodeKey) || ''
@@ -178,7 +184,8 @@ class Connection {
           this.setState('error')
         }
       } else if (msg.type === ControlType.LEASE) {
-        // lease extended; nothing to persist for now
+        // Gateway replied to our heartbeat → measure control-plane RTT.
+        if (this.lastHeartbeatSentAt) this.rttMs = Date.now() - this.lastHeartbeatSentAt
       } else if (msg.type === DataType.RELAY_REQUEST) {
         this.handleRelayRequest(ws, msg.payload)
       } else if (msg.type === DataType.RELAY_WS_OPEN) {
@@ -248,8 +255,13 @@ class Connection {
     if (this.heartbeat) clearInterval(this.heartbeat)
     this.heartbeat = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
+        this.lastHeartbeatSentAt = Date.now()
         ws.send(
-          JSON.stringify({ v: PROTOCOL_VERSION, type: ControlType.HEARTBEAT, payload: { machineId: this.machineId } }),
+          JSON.stringify({
+            v: PROTOCOL_VERSION,
+            type: ControlType.HEARTBEAT,
+            payload: { machineId: this.machineId, agentVersion: AGENT_VERSION, dshVersion: this.dshVersion },
+          }),
         )
       }
     }, HEARTBEAT_INTERVAL_MS)
@@ -376,8 +388,10 @@ class Connection {
       state: this.state,
       machineId: this.machineId,
       hasNodeKey: !!this.nodeKey,
+      agentVersion: AGENT_VERSION,
+      dshVersion: this.dshVersion,
+      rttMs: this.rttMs,
       lastError: this.lastError,
-      version: '0.1.0',
     }
   }
 }
