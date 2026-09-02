@@ -6,7 +6,7 @@
 // 铁律（参照 dsh-remote-workspaces）：不 import @deepseek-ai/* 内部包。
 
 import http from 'node:http'
-import { homedir } from 'node:os'
+import { homedir, hostname } from 'node:os'
 import { join, resolve } from 'node:path'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import WebSocket from 'ws'
@@ -16,7 +16,6 @@ import {
   ControlType,
   DataType,
   DataKind,
-  signChallenge,
   encodeFrame,
   encodeBinaryFrame,
   BinaryFrameParser,
@@ -89,6 +88,7 @@ class Connection {
     this.ws = null
     this.state = 'unconfigured'
     this.machineId = null
+    this.nodeKey = ''
     this.lastError = null
     this.heartbeat = null
     this.operatorCookie = ''
@@ -114,6 +114,9 @@ class Connection {
     }
     this.dshPort = (config && config.dshPort) || 3080
     this.configOperatorCookie = (config && config.operatorCookie) || ''
+    // Persisted node identity (issued on first onboarding); used to reconnect.
+    this.machineId = (config && config.machineId) || null
+    this.nodeKey = (config && config.nodeKey) || ''
 
     // Re-mint the operator cookie before EVERY connection attempt (boot AND
     // reconnect), so a bad/expired boot cookie self-heals on the next connect.
@@ -164,29 +167,22 @@ class Connection {
       console.log('[dsh-gateway-agent] recv', msg.type, msg.payload && msg.payload.path ? msg.payload.path : '')
 
       if (msg.type === ControlType.CHALLENGE) {
-        const signature = signChallenge(code ?? '', msg.payload.nonce)
-        ws.send(
-          JSON.stringify({
-            v: PROTOCOL_VERSION,
-            type: ControlType.CHALLENGE_RESPONSE,
-            payload: { nonce: msg.payload.nonce, signature, code: code ?? '' },
-          }),
-        )
+        // Reconnect with the issued node key; otherwise onboard with the pairing code.
+        const payload =
+          this.machineId && this.nodeKey
+            ? { nonce: msg.payload.nonce, machineId: this.machineId, nodeKey: this.nodeKey }
+            : { nonce: msg.payload.nonce, code: code ?? '', machineName: (config && config.machineName) || hostname(), dshVersion: (config && config.dshVersion) || '' }
+        ws.send(JSON.stringify({ v: PROTOCOL_VERSION, type: ControlType.CHALLENGE_RESPONSE, payload }))
       } else if (msg.type === ControlType.REGISTRATION_STATUS) {
         if (msg.payload.state === 'approved') {
           this.machineId = msg.payload.machineId
           this.setState('online')
-          this.heartbeat = setInterval(() => {
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.send(
-                JSON.stringify({
-                  v: PROTOCOL_VERSION,
-                  type: ControlType.HEARTBEAT,
-                  payload: { machineId: this.machineId },
-                }),
-              )
-            }
-          }, HEARTBEAT_INTERVAL_MS)
+          this.startHeartbeat(ws)
+        } else if (msg.payload.state === 'pending') {
+          this.machineId = msg.payload.machineId
+          if (msg.payload.nodeKey) this.persistIdentity(msg.payload.machineId, msg.payload.nodeKey)
+          this.setState('pending')
+          this.startHeartbeat(ws) // keep the lease alive while awaiting approval
         } else {
           this.lastError = msg.payload.reason ?? msg.payload.state
           this.setState('error')
@@ -230,6 +226,27 @@ class Connection {
         /* ignore */
       }
       this.ws = null
+    }
+  }
+
+  startHeartbeat(ws) {
+    if (this.heartbeat) clearInterval(this.heartbeat)
+    this.heartbeat = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(
+          JSON.stringify({ v: PROTOCOL_VERSION, type: ControlType.HEARTBEAT, payload: { machineId: this.machineId } }),
+        )
+      }
+    }, HEARTBEAT_INTERVAL_MS)
+  }
+
+  persistIdentity(machineId, nodeKey) {
+    this.machineId = machineId
+    this.nodeKey = nodeKey
+    try {
+      saveConfig({ ...loadConfig(), machineId, nodeKey })
+    } catch {
+      /* ignore */
     }
   }
 
@@ -342,6 +359,7 @@ class Connection {
     return {
       state: this.state,
       machineId: this.machineId,
+      hasNodeKey: !!this.nodeKey,
       lastError: this.lastError,
       version: '0.1.0',
     }
@@ -414,7 +432,10 @@ export default function apply(ctx) {
       return { ok: true, value: { applied: true } }
     },
     async onboard(gatewayUrl, pairingCode) {
+      // Fresh onboarding: drop any prior node identity so the pairing code is used.
       const cfg = { ...loadConfig(), gatewayUrl, pairingCode }
+      delete cfg.machineId
+      delete cfg.nodeKey
       saveConfig(cfg)
       conn.connect(gatewayUrl, pairingCode, cfg)
       return { ok: true, value: conn.status() }
