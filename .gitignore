@@ -1,0 +1,32 @@
+# 设计文档不入库（约定：工程代码进 git，设计文档只留本地）
+docs/
+
+# Node
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# Runtime data
+data/
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.*
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Local harness home (dev machines)
+.dsh/
