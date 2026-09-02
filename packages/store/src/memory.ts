@@ -18,7 +18,7 @@ export class InMemoryStore implements IStore {
   private machines = new Map<string, Machine>()
   private assignments = new Map<string, Assignment>() // `${machineId}:${userId}`
   private pairingCodes = new Map<string, PairingCode>() // by codeHash
-  private seats = new Map<string, Seat>() // `${machineId}:${userId}`
+  private seats = new Map<string, Seat>() // by machineId (single operator per machine)
   private audit: AuditEvent[] = []
 
   async open(): Promise<void> {}
@@ -73,13 +73,14 @@ export class InMemoryStore implements IStore {
   }
 
   async acquireSeat(seat: Seat): Promise<boolean> {
-    const key = `${seat.machineId}:${seat.userId}`
-    if (this.seats.has(key)) return false
-    this.seats.set(key, seat)
+    const existing = this.seats.get(seat.machineId)
+    if (existing && existing.userId !== seat.userId) return false
+    this.seats.set(seat.machineId, seat)
     return true
   }
   async releaseSeat(machineId: string, userId: string): Promise<void> {
-    this.seats.delete(`${machineId}:${userId}`)
+    const existing = this.seats.get(machineId)
+    if (existing && existing.userId === userId) this.seats.delete(machineId)
   }
 
   async appendAudit(e: AuditEvent): Promise<void> {

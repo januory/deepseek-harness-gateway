@@ -31,9 +31,12 @@ describe('InMemoryStore', () => {
       ttlMs: 60_000,
     }
     expect(await store.acquireSeat(seat)).toBe(true)
-    expect(await store.acquireSeat(seat)).toBe(false)
-    await store.releaseSeat('m1', 'u1')
+    // Same user re-acquiring renews their own seat.
     expect(await store.acquireSeat(seat)).toBe(true)
+    // A different user is refused (single operator per machine).
+    expect(await store.acquireSeat({ ...seat, userId: 'u2' })).toBe(false)
+    await store.releaseSeat('m1', 'u1')
+    expect(await store.acquireSeat({ ...seat, userId: 'u2' })).toBe(true)
   })
 
   it('filters audit by tenant and machine', async () => {

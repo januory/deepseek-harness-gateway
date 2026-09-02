@@ -4,17 +4,19 @@ import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { WebSocketServer } from 'ws'
 import { PROTOCOL_VERSION } from 'dsh-gateway-protocol'
-import { InMemoryStore } from 'dsh-gateway-store'
+import { SqliteStore } from 'dsh-gateway-store'
 import { NodeRegistry } from './nodes.js'
 import { registerRouter } from './router.js'
 
 const HOST = process.env.GATEWAY_HOST ?? '127.0.0.1'
 const PORT = Number(process.env.GATEWAY_PORT ?? 3300)
+// Durable SQLite store (ADR-0007). Defaults to ./gateway.db; set GATEWAY_DB_PATH
+// to ':memory:' for a throwaway run or to a custom file path.
+const DB_PATH = process.env.GATEWAY_DB_PATH ?? './gateway.db'
 
 const app = Fastify({ logger: true })
 
-// P0: in-memory store placeholder; SQLite (ADR-0007) replaces it next.
-const store = new InMemoryStore()
+const store = new SqliteStore({ filename: DB_PATH })
 await store.open()
 
 const registry = new NodeRegistry(store)
