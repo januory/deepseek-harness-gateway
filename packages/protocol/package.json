@@ -1,0 +1,19 @@
+{
+  "name": "dsh-gateway-protocol",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Shared wire protocol for deepseek-harness-gateway (plain JS + JSDoc, zero build so the dsh plugin can import it directly).",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": ["src"],
+  "scripts": {
+    "build": "node -e \"console.log('dsh-gateway-protocol: no build (plain JS)')\"",
+    "test": "vitest run",
+    "typecheck": "node -e \"console.log('dsh-gateway-protocol: plain JS, typecheck skipped')\""
+  },
+  "devDependencies": {
+    "vitest": "^3.0.5"
+  }
+}
