@@ -210,17 +210,6 @@ export class NodeRegistry {
     return found
   }
 
-  /** Handle a browser WebSocket upgrade on /console/<machineId>/... */
-  handleConsoleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
-    const u = new URL(req.url ?? '/', 'http://console')
-    const segs = u.pathname.split('/').filter(Boolean) // ['console', machineId, ...]
-    if (segs.length < 2 || segs[0] !== 'console') {
-      socket.destroy()
-      return
-    }
-    this.upgradeBrowserWs(req, socket, head, segs[1], '/' + segs.slice(2).join('/') + u.search)
-  }
-
   /** Relay any browser WebSocket upgrade to a node at an arbitrary upstream path. */
   upgradeBrowserWs(req: IncomingMessage, socket: Duplex, head: Buffer, machineId: string, upstreamPath: string): void {
     const node = this.nodes.get(machineId)

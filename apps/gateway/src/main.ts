@@ -7,8 +7,9 @@ import { PROTOCOL_VERSION } from 'dsh-gateway-protocol'
 import { SqliteStore } from 'dsh-gateway-store'
 import { NodeRegistry } from './nodes.js'
 import { registerRouter } from './router.js'
-import { buildAuth, bootstrap } from './auth.js'
+import { buildAuth, bootstrap, SESSION_COOKIE } from './auth.js'
 import { registerControl } from './control.js'
+import { authorizeConsole, getCookie } from './authz.js'
 
 const HOST = process.env.GATEWAY_HOST ?? '127.0.0.1'
 const PORT = Number(process.env.GATEWAY_PORT ?? 3300)
@@ -46,7 +47,7 @@ for (const entry of (process.env.GATEWAY_PAIRING_CODES ?? '').split(',').filter(
 registry.start()
 
 // Console HTTP relay → node → local dsh web.
-registerRouter(app, registry)
+registerRouter(app, registry, store)
 
 // Portal-user auth (session cookie + login/logout/me).
 await auth.register(app, store)
@@ -73,21 +74,40 @@ if (existsSync(webDist)) {
 }
 
 // /agent — outbound wss from dsh-gateway-agent (onboarding + heartbeat).
-// /console/:machineId/* — browser console (HTTP relay + WS stream relay).
+// /console/:machineId/* and the /* fallback — browser console WS, fail-closed
+// behind the same assignment+seat check as the HTTP relay.
 const wss = new WebSocketServer({ noServer: true })
+
+async function handleBrowserUpgrade(req: any, socket: any, head: Buffer): Promise<void> {
+  const u = new URL(req.url ?? '/', 'http://console')
+  const isConsole = u.pathname.startsWith('/console/')
+  let machineId: string | undefined
+  let upstreamPath: string
+  if (isConsole) {
+    const segs = u.pathname.split('/').filter(Boolean) // ['console', machineId, ...]
+    if (segs.length < 2) return socket.destroy()
+    machineId = segs[1]
+    upstreamPath = '/' + segs.slice(2).join('/') + u.search
+  } else {
+    machineId = registry.singleNodeId()
+    upstreamPath = u.pathname + u.search
+  }
+  if (!machineId) return socket.destroy()
+
+  const token = getCookie(req.headers.cookie, SESSION_COOKIE)
+  const session = token ? auth.sessions.get(token) : undefined
+  const user = session ? await store.getUser(session.userId) : undefined
+  const res = await authorizeConsole(store, user, machineId)
+  if (!res.allowed) return socket.destroy()
+
+  registry.upgradeBrowserWs(req, socket, head, machineId, upstreamPath)
+}
+
 app.server.on('upgrade', (req, socket, head) => {
   if (req.url?.startsWith('/agent')) {
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req))
-  } else if (req.url?.startsWith('/console/')) {
-    registry.handleConsoleUpgrade(req, socket, head)
   } else {
-    const mid = registry.singleNodeId()
-    if (mid) {
-      const u = new URL(req.url ?? '/', 'http://console')
-      registry.upgradeBrowserWs(req, socket, head, mid, u.pathname + u.search)
-    } else {
-      socket.destroy()
-    }
+    void handleBrowserUpgrade(req, socket, head)
   }
 })
 wss.on('connection', (ws) => registry.attach(ws))

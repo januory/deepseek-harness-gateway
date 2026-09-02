@@ -8,6 +8,7 @@ import type { IStore, Role, User, Machine } from 'dsh-gateway-store'
 import type { NodeRegistry } from './nodes.js'
 import type { Auth } from './auth.js'
 import { hashPassword } from './auth.js'
+import { SEAT_TTL_MS } from './authz.js'
 
 function isAdmin(user: User): boolean {
   return user.role === 'platform-admin' || user.role === 'tenant-admin'
@@ -184,7 +185,7 @@ export async function registerControl(app: FastifyInstance, store: IStore, regis
       return reply.code(403).send({ error: 'forbidden' })
     }
 
-    const seat = { machineId, userId: user.id, sessionRef: randomUUID(), acquiredAt: new Date().toISOString(), ttlMs: 60_000 }
+    const seat = { machineId, userId: user.id, sessionRef: randomUUID(), acquiredAt: new Date().toISOString(), ttlMs: SEAT_TTL_MS }
     const ok = await store.acquireSeat(seat)
     if (!ok) {
       const held = await store.getSeat(machineId)

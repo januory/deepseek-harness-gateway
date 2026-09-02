@@ -1,10 +1,12 @@
-// Console HTTP relay: /console/:machineId/* → node → local dsh web (P0, buffered).
+// Console HTTP relay: /console/:machineId/* → node → local dsh web (buffered).
 // Absolute dsh paths (/api, /plugins, /assets, …) are served by a single-node
-// passthrough catch-all, so the dsh WebUI works under any gateway path prefix.
-// Authz (assignment + seat, ADR-0005) lands in P1.
+// passthrough catch-all. Both paths are fail-closed behind the console
+// authorization check (assignment + seat, ADR-0004/0005).
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import type { IStore } from 'dsh-gateway-store'
 import type { NodeRegistry } from './nodes.js'
+import { authorizeConsole } from './authz.js'
 
 const FORWARD_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'] as const
 const DROP_HEADERS = new Set([
@@ -45,14 +47,12 @@ export async function relayHttp(
   }
 }
 
-export function registerRouter(app: FastifyInstance, registry: NodeRegistry): void {
+export function registerRouter(app: FastifyInstance, registry: NodeRegistry, store: IStore): void {
   // Register the relay under its own encapsulated scope so the raw-buffer body
   // parser only applies here — control-plane routes (app-level) keep Fastify's
   // default JSON parsing.
   app.register(async (scoped) => {
     // Accept any content type as a raw Buffer (the node re-serializes upstream).
-    // `application/json` is registered explicitly because Fastify's built-in JSON
-    // parser would otherwise win over `*` and turn the body into an object.
     const rawBodyParser = (request: any, payload: any, done: (e: Error | null, body?: Buffer) => void) => {
       const chunks: Buffer[] = []
       payload.on('data', (c: Buffer) => chunks.push(c))
@@ -62,16 +62,31 @@ export function registerRouter(app: FastifyInstance, registry: NodeRegistry): vo
     scoped.addContentTypeParser('*', rawBodyParser)
     scoped.addContentTypeParser('application/json', rawBodyParser)
 
+    const consoleAuthz = async (req: FastifyRequest, reply: FastifyReply) => {
+      const machineId = (req.params as any).machineId as string
+      const res = await authorizeConsole(store, req.user, machineId)
+      if (!res.allowed) return reply.code(res.status).send({ error: res.error, heldBy: res.heldBy })
+    }
+
+    const singleNodeAuthz = async (req: FastifyRequest, reply: FastifyReply) => {
+      const mid = registry.singleNodeId()
+      if (!mid) return reply.code(503).send({ error: 'no connected node' })
+      const res = await authorizeConsole(store, req.user, mid)
+      if (!res.allowed) return reply.code(res.status).send({ error: res.error, heldBy: res.heldBy })
+    }
+
     for (const method of FORWARD_METHODS) {
       scoped.route({
         method,
         url: '/console/:machineId/*',
+        preHandler: consoleAuthz,
         handler: (req, reply) =>
           relayHttp(registry, (req.params as any).machineId, req, reply, '/' + ((req.params as any)['*'] || '') + queryString(req)),
       })
       scoped.route({
         method,
         url: '/console/:machineId',
+        preHandler: consoleAuthz,
         handler: (req, reply) => relayHttp(registry, (req.params as any).machineId, req, reply, '/' + queryString(req)),
       })
     }
@@ -81,6 +96,7 @@ export function registerRouter(app: FastifyInstance, registry: NodeRegistry): vo
       scoped.route({
         method,
         url: '/*',
+        preHandler: singleNodeAuthz,
         handler: async (req, reply) => {
           const mid = registry.singleNodeId()
           if (!mid) return reply.code(503).send({ error: 'no connected node' })

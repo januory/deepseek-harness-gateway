@@ -90,6 +90,11 @@ if (approveResp.status !== 200) {
   console.error('FAIL: approve', approveResp.status, await approveResp.text())
   process.exit(1)
 }
+const seatResp = await fetch(`${gatewayHttp}/gw/seats/${machineId}/acquire`, { method: 'POST', headers: { cookie } })
+if (seatResp.status !== 200) {
+  console.error('FAIL: acquire seat', seatResp.status, await seatResp.text())
+  process.exit(1)
+}
 
 // 3. reconnect with node key → approved; keep this socket for relay
 const reconn = await authAndGetWs((nonce) => ({ nonce, machineId, nodeKey }))
@@ -163,7 +168,7 @@ function handleWsOpen({ channel, path }) {
 
 // --- client tests ---------------------------------------------------------
 async function testHttp() {
-  const resp = await fetch(`${gatewayHttp}/console/${machineId}/hello?x=1`)
+  const resp = await fetch(`${gatewayHttp}/console/${machineId}/hello?x=1`, { headers: { cookie } })
   const text = await resp.text()
   httpPassed = resp.status === 200 && resp.headers.get('x-upstream') === 'mock' && text.includes('/hello?x=1')
   console.log('HTTP relay:', httpPassed ? 'PASS' : 'FAIL', resp.status, text)
@@ -171,7 +176,7 @@ async function testHttp() {
 }
 
 function testWs() {
-  const c = new WebSocket(`${gatewayHttp.replace(/^http/, 'ws')}/console/${machineId}/ws?x=1`)
+  const c = new WebSocket(`${gatewayHttp.replace(/^http/, 'ws')}/console/${machineId}/ws?x=1`, { headers: { cookie } })
   let phase = 0 // 0=await echo text, 1=await echo binary
   c.on('open', () => {
     phase = 0

@@ -71,6 +71,11 @@ const approveResp = await fetch(`${gatewayHttp}/gw/machines/${machineId}/approve
 if (approveResp.status !== 200) fail(`approve failed: ${approveResp.status} ${await approveResp.text()}`)
 console.log('2. approved via admin API')
 
+// Acquire the console seat so the relay is authorized (ADR-0005).
+const seatResp = await fetch(`${gatewayHttp}/gw/seats/${machineId}/acquire`, { method: 'POST', headers: { cookie } })
+if (seatResp.status !== 200) fail(`acquire seat failed: ${seatResp.status} ${await seatResp.text()}`)
+console.log('3. console seat acquired')
+
 // --- 3. reconnect with node key → approved + relay ------------------------
 const relayHandler = (ws, { channel, path }) => {
   const body = Buffer.from(JSON.stringify({ ok: true, path }))
@@ -81,14 +86,14 @@ const relayHandler = (ws, { channel, path }) => {
 
 const reconn = await connect((nonce) => ({ nonce, machineId, nodeKey }), relayHandler)
 if (reconn.msg.payload.state !== 'approved') fail(`expected approved, got ${JSON.stringify(reconn.msg.payload)}`)
-console.log('3. reconnected approved:', machineId)
+console.log('4. reconnected approved:', machineId)
 
-const relayResp = await fetch(`${gatewayHttp}/console/${machineId}/hello?x=1`)
+const relayResp = await fetch(`${gatewayHttp}/console/${machineId}/hello?x=1`, { headers: { cookie } })
 const relayBody = await relayResp.text()
 if (relayResp.status !== 200 || relayResp.headers.get('x-e2e') !== '1' || !relayBody.includes('/hello?x=1')) {
   fail(`relay failed: ${relayResp.status} ${relayBody}`)
 }
-console.log('4. HTTP relay round-trip OK')
+console.log('5. HTTP relay round-trip OK')
 
 clearTimeout(timeout)
 console.log('PASS: onboarding → approve → reconnect → relay')
