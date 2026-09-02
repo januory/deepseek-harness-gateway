@@ -20,16 +20,17 @@ export interface MachineView {
 }
 
 async function req<T>(path: string, opts: RequestInit = {}): Promise<T> {
-  const res = await fetch(path, {
-    headers: { 'content-type': 'application/json', ...(opts.headers || {}) },
-    credentials: 'same-origin',
-    ...opts,
-  })
+  const headers: Record<string, string> = { ...((opts.headers as Record<string, string>) ?? {}) }
+  // Only declare a JSON body when there actually is one — an empty POST body
+  // with content-type: application/json makes Fastify reject it with 400.
+  if (opts.body != null) headers['content-type'] = 'application/json'
+  const res = await fetch(path, { ...opts, headers, credentials: 'same-origin' })
   if (!res.ok) {
     let message = `HTTP ${res.status}`
     try {
       const body = await res.json()
-      if (body && (body as any).error) message = (body as any).error
+      if (body && (body as any).message) message = (body as any).message
+      else if (body && (body as any).error) message = (body as any).error
     } catch {
       /* ignore */
     }
