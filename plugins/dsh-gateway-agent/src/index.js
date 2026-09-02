@@ -210,12 +210,17 @@ class Connection {
     })
   }
 
-  scheduleReconnect(gatewayUrl, code, config) {
+  scheduleReconnect(gatewayUrl, code, fallbackConfig) {
     this.stop()
     // Exponential backoff with jitter; reset only after a successful (re)join.
     const delay = backoffDelay(this.backoffMs, RECONNECT_MAX_MS)
     this.backoffMs = nextBackoff(this.backoffMs, RECONNECT_MAX_MS)
-    this.reconnectTimer = setTimeout(() => this.connect(gatewayUrl, code, config), delay)
+    this.reconnectTimer = setTimeout(() => {
+      // Re-read config on reconnect so a node key issued mid-session (pending
+      // handshake) is picked up instead of the stale boot-time snapshot.
+      const cfg = this.configStore ? this.configStore.read() : fallbackConfig
+      this.connect(gatewayUrl, code, cfg)
+    }, delay)
   }
 
   stop() {
