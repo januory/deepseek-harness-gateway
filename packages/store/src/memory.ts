@@ -30,12 +30,18 @@ export class InMemoryStore implements IStore {
   async getTenant(id: string): Promise<Tenant | undefined> {
     return this.tenants.get(id)
   }
+  async listTenants(): Promise<Tenant[]> {
+    return [...this.tenants.values()]
+  }
 
   async upsertUser(u: User): Promise<void> {
     this.users.set(u.id, u)
   }
   async getUser(id: string): Promise<User | undefined> {
     return this.users.get(id)
+  }
+  async listUsers(tenantId: string): Promise<User[]> {
+    return [...this.users.values()].filter((u) => u.tenantId === tenantId)
   }
 
   async upsertMachine(m: Machine): Promise<void> {
@@ -57,6 +63,9 @@ export class InMemoryStore implements IStore {
   async listAssignmentsForUser(userId: string): Promise<Assignment[]> {
     return [...this.assignments.values()].filter((a) => a.userId === userId)
   }
+  async listAssignments(tenantId: string): Promise<Assignment[]> {
+    return [...this.assignments.values()].filter((a) => this.machines.get(a.machineId)?.tenantId === tenantId)
+  }
 
   async upsertPairingCode(c: PairingCode): Promise<void> {
     this.pairingCodes.set(c.codeHash, c)
@@ -71,6 +80,9 @@ export class InMemoryStore implements IStore {
       c.machineId = machineId
     }
   }
+  async listPairingCodes(tenantId: string): Promise<PairingCode[]> {
+    return [...this.pairingCodes.values()].filter((c) => c.tenantId === tenantId)
+  }
 
   async acquireSeat(seat: Seat): Promise<boolean> {
     const existing = this.seats.get(seat.machineId)
@@ -81,6 +93,9 @@ export class InMemoryStore implements IStore {
   async releaseSeat(machineId: string, userId: string): Promise<void> {
     const existing = this.seats.get(machineId)
     if (existing && existing.userId === userId) this.seats.delete(machineId)
+  }
+  async getSeat(machineId: string): Promise<Seat | undefined> {
+    return this.seats.get(machineId)
   }
 
   async appendAudit(e: AuditEvent): Promise<void> {

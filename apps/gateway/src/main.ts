@@ -8,6 +8,7 @@ import { SqliteStore } from 'dsh-gateway-store'
 import { NodeRegistry } from './nodes.js'
 import { registerRouter } from './router.js'
 import { buildAuth, bootstrap } from './auth.js'
+import { registerControl } from './control.js'
 
 const HOST = process.env.GATEWAY_HOST ?? '127.0.0.1'
 const PORT = Number(process.env.GATEWAY_PORT ?? 3300)
@@ -34,8 +35,13 @@ const registry = new NodeRegistry(store)
 
 // Seed one-time pairing codes for testing: GATEWAY_PAIRING_CODES="code:tenantId,..."
 for (const entry of (process.env.GATEWAY_PAIRING_CODES ?? '').split(',').filter(Boolean)) {
-  const [code, tenantId] = entry.split(':')
-  if (code && tenantId) registry.seedPairingCode(code, tenantId)
+  const [code, tenantId = 'default'] = entry.split(':')
+  if (!code) continue
+  try {
+    await registry.seedPairingCode(code, tenantId)
+  } catch (e) {
+    app.log.warn(`failed to seed pairing code for tenant "${tenantId}": ${String((e as Error).message ?? e)}`)
+  }
 }
 registry.start()
 
@@ -44,6 +50,9 @@ registerRouter(app, registry)
 
 // Portal-user auth (session cookie + login/logout/me).
 await auth.register(app, store)
+
+// Control-plane REST API (tenants/users/machines/assignments/pairing-codes/seats/audit).
+await registerControl(app, store, registry, auth)
 
 app.get('/health', async () => ({
   ok: true,

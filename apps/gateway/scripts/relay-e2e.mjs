@@ -1,17 +1,20 @@
-// P0 data-plane relay end-to-end test: HTTP relay + WS stream relay.
-// Starts mock upstreams (HTTP echo + WS echo), pairs a scripted node to the
-// running gateway, then exercises /console/<machineId>/... over both transports.
+// P1 data-plane relay end-to-end test: HTTP relay + WS stream relay.
+// Starts mock upstreams (HTTP echo + WS echo), onboards a scripted node with a
+// pairing code, approves it via the admin API, reconnects with the node key,
+// then exercises /console/<machineId>/... over both transports.
 //
 // Usage: CODE=testcode node scripts/relay-e2e.mjs
-//   (gateway must be running with GATEWAY_PAIRING_CODES="testcode:t1")
+//   (gateway must be running with GATEWAY_PAIRING_CODES="testcode:default")
 
 import http from 'node:http'
 import WebSocket, { WebSocketServer } from 'ws'
-import { signChallenge, encodeFrame, DataKind, BinaryFrameParser } from 'dsh-gateway-protocol'
+import { encodeFrame, DataKind, BinaryFrameParser } from 'dsh-gateway-protocol'
 
 const code = process.env.CODE ?? 'testcode'
-const gatewayWs = 'ws://127.0.0.1:3300/agent'
-const gatewayHttp = 'http://127.0.0.1:3300'
+const adminId = process.env.ADMIN_ID ?? 'admin'
+const adminPassword = process.env.ADMIN_PASSWORD ?? 'admin'
+const gatewayWs = process.env.GATEWAY_URL ?? 'ws://127.0.0.1:3300/agent'
+const gatewayHttp = process.env.GATEWAY_HTTP ?? 'http://127.0.0.1:3300'
 const upstreamHttpPort = 3999
 const upstreamWsPort = 3998
 
@@ -38,16 +41,63 @@ wsUpstream.on('connection', (uws) => {
 const parser = new BinaryFrameParser()
 const wsUpstreams = new Map() // channel -> { u, queue }
 let machineId = null
+let nodeKey = null
 let httpPassed = false
 let wsPassed = false
 
 const timeout = setTimeout(() => {
   console.error('FAIL: timeout (httpPassed=%s wsPassed=%s)', httpPassed, wsPassed)
   process.exit(1)
-}, 12000)
+}, 15000)
 
-const ws = new WebSocket(gatewayWs)
+function authAndGetWs(authPayload) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(gatewayWs)
+    const onAuth = (raw) => {
+      const msg = JSON.parse(String(raw))
+      if (msg.type === 'challenge') {
+        ws.send(JSON.stringify({ v: 1, type: 'challenge_response', payload: authPayload(msg.payload.nonce) }))
+      } else if (msg.type === 'registration_status') {
+        ws.off('message', onAuth)
+        resolve({ ws, msg })
+      }
+    }
+    ws.on('message', onAuth)
+    ws.on('error', reject)
+  })
+}
 
+// 1. onboard → pending + node key
+const onboard = await authAndGetWs((nonce) => ({ nonce, code, machineName: 'relay-test-node', dshVersion: '0.1.0' }))
+if (onboard.msg.payload.state !== 'pending') {
+  console.error('FAIL: expected pending, got', JSON.stringify(onboard.msg.payload))
+  process.exit(1)
+}
+machineId = onboard.msg.payload.machineId
+nodeKey = onboard.msg.payload.nodeKey
+onboard.ws.close()
+console.log('onboarded pending:', machineId)
+
+// 2. admin login + approve
+const loginResp = await fetch(`${gatewayHttp}/gw/login`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ id: adminId, password: adminPassword }),
+})
+const cookie = loginResp.headers.getSetCookie()[0].split(';')[0]
+const approveResp = await fetch(`${gatewayHttp}/gw/machines/${machineId}/approve`, { method: 'POST', headers: { cookie } })
+if (approveResp.status !== 200) {
+  console.error('FAIL: approve', approveResp.status, await approveResp.text())
+  process.exit(1)
+}
+
+// 3. reconnect with node key → approved; keep this socket for relay
+const reconn = await authAndGetWs((nonce) => ({ nonce, machineId, nodeKey }))
+if (reconn.msg.payload.state !== 'approved') {
+  console.error('FAIL: expected approved, got', JSON.stringify(reconn.msg.payload))
+  process.exit(1)
+}
+const ws = reconn.ws
 ws.on('message', (raw, isBinary) => {
   const data = Buffer.isBuffer(raw) ? raw : Buffer.from(raw)
   if (isBinary) {
@@ -61,35 +111,17 @@ ws.on('message', (raw, isBinary) => {
   }
 
   const msg = JSON.parse(data.toString('utf8'))
-  if (msg.type === 'challenge') {
-    const signature = signChallenge(code, msg.payload.nonce)
-    ws.send(
-      JSON.stringify({
-        v: 1,
-        type: 'challenge_response',
-        payload: { nonce: msg.payload.nonce, signature, code, machineName: 'relay-test-node', dshVersion: '0.1.0' },
-      }),
-    )
-  } else if (msg.type === 'registration_status' && msg.payload.state === 'approved') {
-    machineId = msg.payload.machineId
-    console.log('paired machineId:', machineId)
-    testHttp()
-    testWs()
-  } else if (msg.type === 'relay_request') {
-    handleRelay(msg.payload)
-  } else if (msg.type === 'relay_ws_open') {
-    handleWsOpen(msg.payload)
-  } else if (msg.type === 'relay_ws_close') {
+  if (msg.type === 'relay_request') handleRelay(msg.payload)
+  else if (msg.type === 'relay_ws_open') handleWsOpen(msg.payload)
+  else if (msg.type === 'relay_ws_close') {
     const e = wsUpstreams.get(msg.payload.channel)
     if (e) e.u.terminate()
     wsUpstreams.delete(msg.payload.channel)
   }
 })
-
-ws.on('error', (e) => {
-  console.error('FAIL ws:', e.message)
-  process.exit(1)
-})
+console.log('reconnected approved:', machineId)
+testHttp()
+testWs()
 
 function handleRelay({ channel, method, path, headers }) {
   const ureq = http.request(
@@ -139,7 +171,7 @@ async function testHttp() {
 }
 
 function testWs() {
-  const c = new WebSocket(`ws://127.0.0.1:3300/console/${machineId}/ws?x=1`)
+  const c = new WebSocket(`${gatewayHttp.replace(/^http/, 'ws')}/console/${machineId}/ws?x=1`)
   let phase = 0 // 0=await echo text, 1=await echo binary
   c.on('open', () => {
     phase = 0

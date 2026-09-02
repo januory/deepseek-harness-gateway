@@ -127,6 +127,11 @@ export class SqliteStore implements IStore {
     return r ? { id: r.id, name: r.name, createdAt: r.createdAt } : undefined
   }
 
+  async listTenants(): Promise<Tenant[]> {
+    const rows = await this.db.select().from(schema.tenants)
+    return rows.map((r) => ({ id: r.id, name: r.name, createdAt: r.createdAt }))
+  }
+
   async upsertUser(u: User): Promise<void> {
     const row = userRow(u)
     await this.db
@@ -141,6 +146,11 @@ export class SqliteStore implements IStore {
   async getUser(id: string): Promise<User | undefined> {
     const r = await this.db.select().from(schema.users).where(eq(schema.users.id, id)).get()
     return r ? { id: r.id, tenantId: r.tenantId, role: r.role as Role, authHash: r.authHash } : undefined
+  }
+
+  async listUsers(tenantId: string): Promise<User[]> {
+    const rows = await this.db.select().from(schema.users).where(eq(schema.users.tenantId, tenantId))
+    return rows.map((r) => ({ id: r.id, tenantId: r.tenantId, role: r.role as Role, authHash: r.authHash }))
   }
 
   async upsertMachine(m: Machine): Promise<void> {
@@ -191,6 +201,19 @@ export class SqliteStore implements IStore {
     return rows.map((r) => ({ machineId: r.machineId, userId: r.userId, createdAt: r.createdAt }))
   }
 
+  async listAssignments(tenantId: string): Promise<Assignment[]> {
+    const rows = await this.db
+      .select({
+        machineId: schema.assignments.machineId,
+        userId: schema.assignments.userId,
+        createdAt: schema.assignments.createdAt,
+      })
+      .from(schema.assignments)
+      .innerJoin(schema.machines, eq(schema.assignments.machineId, schema.machines.id))
+      .where(eq(schema.machines.tenantId, tenantId))
+    return rows.map((r) => ({ machineId: r.machineId, userId: r.userId, createdAt: r.createdAt }))
+  }
+
   async upsertPairingCode(c: PairingCode): Promise<void> {
     await this.db
       .insert(schema.pairingCodes)
@@ -227,6 +250,17 @@ export class SqliteStore implements IStore {
       .where(eq(schema.pairingCodes.codeHash, codeHash))
   }
 
+  async listPairingCodes(tenantId: string): Promise<PairingCode[]> {
+    const rows = await this.db.select().from(schema.pairingCodes).where(eq(schema.pairingCodes.tenantId, tenantId))
+    return rows.map((r) => ({
+      codeHash: r.codeHash,
+      tenantId: r.tenantId,
+      machineId: r.machineId ?? undefined,
+      expiresAt: r.expiresAt,
+      consumedBy: r.consumedBy ?? undefined,
+    }))
+  }
+
   async acquireSeat(seat: Seat): Promise<boolean> {
     const existing = this.seats.get(seat.machineId)
     if (existing && existing.userId !== seat.userId) return false
@@ -246,6 +280,13 @@ export class SqliteStore implements IStore {
     const existing = this.seats.get(machineId)
     if (existing && existing.userId === userId) this.seats.delete(machineId)
     await this.db.delete(schema.seats).where(eq(schema.seats.machineId, machineId))
+  }
+
+  async getSeat(machineId: string): Promise<Seat | undefined> {
+    const r = await this.db.select().from(schema.seats).where(eq(schema.seats.machineId, machineId)).get()
+    return r
+      ? { machineId: r.machineId, userId: r.userId, sessionRef: r.sessionRef, acquiredAt: r.acquiredAt, ttlMs: r.ttlMs }
+      : undefined
   }
 
   async appendAudit(e: AuditEvent): Promise<void> {
