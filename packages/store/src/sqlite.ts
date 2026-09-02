@@ -183,6 +183,12 @@ export class SqliteStore implements IStore {
     return rows.map(machineFromRow)
   }
 
+  async deleteMachine(id: string): Promise<void> {
+    this.seats.delete(id)
+    // FK ON DELETE CASCADE removes assignments + the seats audit row.
+    await this.db.delete(schema.machines).where(eq(schema.machines.id, id))
+  }
+
   async addAssignment(a: Assignment): Promise<void> {
     await this.db
       .insert(schema.assignments)

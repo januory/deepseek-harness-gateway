@@ -53,6 +53,7 @@ export const api = {
   machines: () => req<{ machines: MachineView[] }>('/gw/machines'),
   approve: (id: string) => req('/gw/machines/' + id + '/approve', { method: 'POST' }),
   revoke: (id: string) => req('/gw/machines/' + id + '/revoke', { method: 'POST' }),
+  deleteMachine: (id: string) => req('/gw/machines/' + id, { method: 'DELETE' }),
   issuePairingCode: () =>
     req<{ code: string; expiresAt: string; tenantId: string }>('/gw/pairing-codes', { method: 'POST', body: '{}' }),
   createUser: (id: string, password: string, role: string) =>

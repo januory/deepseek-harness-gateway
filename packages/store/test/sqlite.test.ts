@@ -91,4 +91,25 @@ describe('SqliteStore', () => {
     expect(await store.getPairingCodeByHash('hash1')).toMatchObject({ machineId: 'm1', consumedBy: 'm1' })
     await store.close()
   })
+
+  it('deletes a machine and cascades assignments + seats (audit retained)', async () => {
+    const store = new SqliteStore({ filename: ':memory:' })
+    await store.open()
+    await store.upsertTenant({ id: 't1', name: 'acme', createdAt: '2026-09-01T00:00:00Z' })
+    await store.upsertMachine({ id: 'm1', tenantId: 't1', name: 'dev-box', nodeKeyHash: 'h1', status: 'approved', configRev: 0, createdAt: '2026-09-01T00:00:00Z' })
+    await store.upsertUser({ id: 'u1', tenantId: 't1', role: 'user', authHash: 'ah1' })
+    await store.addAssignment({ machineId: 'm1', userId: 'u1', createdAt: '2026-09-01T00:00:01Z' })
+    await store.acquireSeat({ machineId: 'm1', userId: 'u1', sessionRef: 's1', acquiredAt: '2026-09-01T00:00:02Z', ttlMs: 60_000 })
+    await store.appendAudit({ ts: '2026-09-01T00:00:03Z', actor: 'admin', tenantId: 't1', machineId: 'm1', action: 'approve', result: 'ok' })
+
+    await store.deleteMachine('m1')
+
+    expect(await store.getMachine('m1')).toBeUndefined()
+    expect(await store.listMachines('t1')).toHaveLength(0)
+    expect(await store.listAssignmentsForUser('u1')).toHaveLength(0)
+    expect(await store.getSeat('m1')).toBeUndefined()
+    // Audit is retained even after the machine is gone.
+    expect(await store.queryAudit('t1', { machineId: 'm1' })).toHaveLength(1)
+    await store.close()
+  })
 })

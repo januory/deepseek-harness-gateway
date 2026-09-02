@@ -26,6 +26,8 @@ export interface IStore {
   upsertMachine(m: Machine): Promise<void>
   getMachine(id: string): Promise<Machine | undefined>
   listMachines(tenantId: string): Promise<Machine[]>
+  /** Delete a machine record; cascades assignments/seats (audit is retained). */
+  deleteMachine(id: string): Promise<void>
 
   addAssignment(a: Assignment): Promise<void>
   removeAssignment(machineId: string, userId: string): Promise<void>

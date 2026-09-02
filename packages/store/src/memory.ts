@@ -53,6 +53,13 @@ export class InMemoryStore implements IStore {
   async listMachines(tenantId: string): Promise<Machine[]> {
     return [...this.machines.values()].filter((m) => m.tenantId === tenantId)
   }
+  async deleteMachine(id: string): Promise<void> {
+    this.machines.delete(id)
+    for (const key of [...this.assignments.keys()]) {
+      if (key.startsWith(`${id}:`)) this.assignments.delete(key)
+    }
+    this.seats.delete(id)
+  }
 
   async addAssignment(a: Assignment): Promise<void> {
     this.assignments.set(`${a.machineId}:${a.userId}`, a)

@@ -116,6 +116,18 @@ export async function registerControl(app: FastifyInstance, store: IStore, regis
     }
   })
 
+  app.delete('/gw/machines/:id', { preHandler: requireRole('tenant-admin', 'platform-admin') }, async (req, reply) => {
+    const id = (req.params as any).id as string
+    const m = await store.getMachine(id)
+    if (m && req.user!.role === 'tenant-admin' && m.tenantId !== req.user!.tenantId) return reply.code(403).send({ error: 'forbidden' })
+    try {
+      await registry.deleteMachine(id)
+      return { ok: true }
+    } catch (e) {
+      return reply.code(400).send({ error: String((e as Error).message ?? e) })
+    }
+  })
+
   // ---- assignments -----------------------------------------------------------
   app.get('/gw/assignments', { preHandler: requireRole('tenant-admin', 'platform-admin') }, async (req) => {
     const user = req.user!

@@ -96,6 +96,19 @@ function MachineRow({ m, me, onChanged }: { m: MachineView; me: PublicUser; onCh
       {isAdmin && m.status === 'approved' && (
         <button style={styles.btn} disabled={busy} onClick={() => run(() => api.revoke(m.id))}>吊销</button>
       )}
+      {isAdmin && (
+        <button
+          style={{ ...styles.btn, color: '#dc2626', borderColor: '#dc2626' }}
+          disabled={busy}
+          onClick={() => {
+            if (window.confirm(`删除机器 ${m.name}（${m.id.slice(0, 8)}）？此操作不可撤销。`)) {
+              void run(() => api.deleteMachine(m.id))
+            }
+          }}
+        >
+          删除
+        </button>
+      )}
     </div>
   )
 }

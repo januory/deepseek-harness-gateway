@@ -166,6 +166,19 @@ export class NodeRegistry {
     await this.store.appendAudit({ ts: new Date().toISOString(), actor: 'admin', tenantId: m.tenantId, machineId, action: 'revoke_machine', result: 'ok' })
   }
 
+  /** Delete a machine record entirely; drops its live connection if any. */
+  async deleteMachine(machineId: string): Promise<void> {
+    const m = await this.store.getMachine(machineId)
+    if (!m) throw new Error('machine not found')
+    const node = this.nodes.get(machineId)
+    if (node) {
+      node.ws.close(4000, 'machine deleted')
+      this.nodes.delete(machineId)
+    }
+    await this.store.deleteMachine(machineId)
+    await this.store.appendAudit({ ts: new Date().toISOString(), actor: 'admin', tenantId: m.tenantId, machineId, action: 'delete_machine', result: 'ok' })
+  }
+
   /** Relay an HTTP request to a connected, approved node and await the response. */
   relay(machineId: string, req: RelayRequest): Promise<RelayResponse> {
     const node = this.nodes.get(machineId)
