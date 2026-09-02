@@ -66,17 +66,14 @@ app.get('/health', async () => ({
 
 app.get('/nodes', async () => ({ nodes: await registry.listNodes() }))
 
-// Portal static hosting — apps/web build output. index.html is served at `/`
-// and built assets at `/assets/*` (both more specific than the `/*` relay
-// catch-all, so the portal and the dsh absolute-path passthrough coexist).
+// Portal static hosting — apps/web build output. The SPA is served at `/` and
+// its assets at `/portal/*` (Vite base=/portal/), so the dsh web UI's absolute
+// paths (/assets, /api, /plugins) fall through to the `/*` relay passthrough.
 const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url))
 if (existsSync(webDist)) {
   const indexHtml = join(webDist, 'index.html')
-  const assetsDir = join(webDist, 'assets')
   app.get('/', async (_req, reply) => reply.type('text/html').send(readFileSync(indexHtml)))
-  if (existsSync(assetsDir)) {
-    await app.register(fastifyStatic, { root: assetsDir, prefix: '/assets/' })
-  }
+  await app.register(fastifyStatic, { root: webDist, prefix: '/portal/' })
 } else {
   app.log.warn('apps/web/dist not built — portal static hosting disabled')
 }
