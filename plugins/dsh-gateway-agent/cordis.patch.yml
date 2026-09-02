@@ -1,0 +1,5 @@
+# dsh-gateway-agent 客户机接入插件 bundle。
+# 只做"增加能力"：insert 自身行，不 replace 任何内置行（ADR-0010）。
+- insert:
+    - id: dsh-gateway-agent
+      name: 'dsh-gateway-agent'

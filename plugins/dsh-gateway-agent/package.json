@@ -1,0 +1,33 @@
+{
+  "name": "dsh-gateway-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "客户机接入插件：出站连接 deepseek-harness-gateway，桥接本机 dsh web 供门户完整操控。",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./src/client.js"
+  },
+  "files": ["src", "cordis.patch.yml"],
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "scripts": {
+    "test": "node -e \"console.log('dsh-gateway-agent: 待实现测试')\""
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-api-remotes"
+      ],
+      "platform": "web"
+    }
+  }
+}
