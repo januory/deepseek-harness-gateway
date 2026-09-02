@@ -1,6 +1,7 @@
 import Fastify from 'fastify'
 import fastifyStatic from '@fastify/static'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { WebSocketServer } from 'ws'
 import { PROTOCOL_VERSION } from 'dsh-gateway-protocol'
@@ -65,10 +66,17 @@ app.get('/health', async () => ({
 
 app.get('/nodes', async () => ({ nodes: await registry.listNodes() }))
 
-// Portal static hosting — apps/web build output; skipped until built.
+// Portal static hosting — apps/web build output. index.html is served at `/`
+// and built assets at `/assets/*` (both more specific than the `/*` relay
+// catch-all, so the portal and the dsh absolute-path passthrough coexist).
 const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url))
 if (existsSync(webDist)) {
-  await app.register(fastifyStatic, { root: webDist, prefix: '/' })
+  const indexHtml = join(webDist, 'index.html')
+  const assetsDir = join(webDist, 'assets')
+  app.get('/', async (_req, reply) => reply.type('text/html').send(readFileSync(indexHtml)))
+  if (existsSync(assetsDir)) {
+    await app.register(fastifyStatic, { root: assetsDir, prefix: '/assets/' })
+  }
 } else {
   app.log.warn('apps/web/dist not built — portal static hosting disabled')
 }
