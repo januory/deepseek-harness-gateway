@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from './api'
-import type { PublicUser } from './types'
+import type { MachineView, PublicUser } from './types'
 import { RoleBadge, ToastProvider } from './ui'
 import { LoginView } from './views/LoginView'
 import { MachinesView } from './views/MachinesView'
@@ -9,6 +9,7 @@ import { UsersView } from './views/UsersView'
 import { AssignmentsView } from './views/AssignmentsView'
 import { PairingCodesView } from './views/PairingCodesView'
 import { AuditView } from './views/AuditView'
+import { ConsoleView } from './views/ConsoleView'
 
 type ViewKey = 'machines' | 'tenants' | 'users' | 'assignments' | 'pairing' | 'audit'
 
@@ -29,9 +30,15 @@ const NAV: NavItem[] = [
 
 function Shell({ me, onLogout }: { me: PublicUser; onLogout: () => void }) {
   const [view, setView] = useState<ViewKey>('machines')
+  const [consoleMachine, setConsoleMachine] = useState<MachineView | null>(null)
 
   const items = NAV.filter((n) => n.visible(me))
   const active = items.some((n) => n.key === view) ? view : items[0].key
+
+  function selectNav(key: ViewKey) {
+    setConsoleMachine(null)
+    setView(key)
+  }
 
   return (
     <div className="shell">
@@ -44,8 +51,8 @@ function Shell({ me, onLogout }: { me: PublicUser; onLogout: () => void }) {
           {items.map((n) => (
             <button
               key={n.key}
-              className={`nav-item ${active === n.key ? 'nav-item--active' : ''}`}
-              onClick={() => setView(n.key)}
+              className={`nav-item ${active === n.key && !consoleMachine ? 'nav-item--active' : ''}`}
+              onClick={() => selectNav(n.key)}
             >
               {n.label}
             </button>
@@ -65,15 +72,19 @@ function Shell({ me, onLogout }: { me: PublicUser; onLogout: () => void }) {
           </div>
         </div>
       </aside>
-      <main className="main">
-        <div className="main__inner">
-          {active === 'machines' ? <MachinesView me={me} /> : null}
-          {active === 'users' ? <UsersView me={me} /> : null}
-          {active === 'assignments' ? <AssignmentsView me={me} /> : null}
-          {active === 'pairing' ? <PairingCodesView me={me} /> : null}
-          {active === 'audit' ? <AuditView me={me} /> : null}
-          {active === 'tenants' ? <TenantsView me={me} /> : null}
-        </div>
+      <main className={`main ${consoleMachine ? 'main--console' : ''}`}>
+        {consoleMachine ? (
+          <ConsoleView machine={consoleMachine} onBack={() => setConsoleMachine(null)} />
+        ) : (
+          <div className="main__inner">
+            {active === 'machines' ? <MachinesView me={me} onOpenConsole={setConsoleMachine} /> : null}
+            {active === 'users' ? <UsersView me={me} /> : null}
+            {active === 'assignments' ? <AssignmentsView me={me} /> : null}
+            {active === 'pairing' ? <PairingCodesView me={me} /> : null}
+            {active === 'audit' ? <AuditView me={me} /> : null}
+            {active === 'tenants' ? <TenantsView me={me} /> : null}
+          </div>
+        )}
       </main>
     </div>
   )

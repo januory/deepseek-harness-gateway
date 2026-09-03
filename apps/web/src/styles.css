@@ -150,6 +150,13 @@ h3 {
   padding: 24px 28px;
 }
 
+.main--console {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .main__inner {
   max-width: 1120px;
   margin: 0 auto;
@@ -571,4 +578,42 @@ h3 {
   color: #fff;
   word-break: break-all;
   flex: 1;
+}
+
+/* ---- in-portal console (iframe) -------------------------------------------------------------- */
+
+.console {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.console__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+  flex: 0 0 auto;
+}
+
+.console__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.console__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.console__frame {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: #fff;
 }

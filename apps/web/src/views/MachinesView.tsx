@@ -5,7 +5,7 @@ import { Button, Card, Empty, Modal, PageHeader, Spinner, StatusBadge, StatusDot
 
 type Filter = 'all' | 'approved' | 'pending' | 'revoked'
 
-export function MachinesView({ me }: { me: PublicUser }) {
+export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenConsole: (m: MachineView) => void }) {
   const isAdmin = me.role !== 'user'
   const toast = useToast()
 
@@ -56,7 +56,7 @@ export function MachinesView({ me }: { me: PublicUser }) {
   function openConsole(m: MachineView) {
     void run(m, async () => {
       await api.acquireSeat(m.id)
-      window.location.assign('/console/' + m.id + '/')
+      onOpenConsole(m)
     })
   }
 
