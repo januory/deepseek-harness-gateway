@@ -457,10 +457,10 @@ export default function apply(ctx) {
 
   const service = {
     async status() {
-      return { ok: true, value: conn.status() }
+      return { ok: true, ...conn.status() }
     },
     async getConfig() {
-      return { ok: true, value: sanitizeConfig(configStore.read()) }
+      return { ok: true, ...sanitizeConfig(configStore.read()) }
     },
     async applyConfig(config) {
       // Only client-writable fields are accepted; node identity is server-authoritative.
@@ -470,7 +470,7 @@ export default function apply(ctx) {
         if (config && config[field] !== undefined) next[field] = config[field]
       }
       configStore.write(next)
-      return { ok: true, value: { applied: true, config: sanitizeConfig(next) } }
+      return { ok: true, applied: true, config: sanitizeConfig(next) }
     },
     async onboard(gatewayUrl, pairingCode) {
       // Fresh onboarding: drop any prior node identity so the pairing code is used.
@@ -479,7 +479,7 @@ export default function apply(ctx) {
       delete cfg.nodeKey
       configStore.write(cfg)
       conn.connect(gatewayUrl, pairingCode, cfg)
-      return { ok: true, value: conn.status() }
+      return { ok: true, ...conn.status() }
     },
   }
   service.typertRemote = Object.freeze({ service, serviceKey: NAMESPACE, namespace: NAMESPACE })
