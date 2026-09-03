@@ -119,6 +119,18 @@ window.__ModuleLoader__.load({
       )
     }
 
+    // 统一远程调用入口：方法缺失时给出「命名空间上有哪些属性」的明确报错。
+    function remoteCall(namespace, method, args) {
+      if (!namespace) throw new Error('客户端尚未就绪')
+      var fn = namespace[method]
+      if (typeof fn !== 'function') {
+        var keys = []
+        try { keys = Object.keys(namespace) } catch (e) { keys = [] }
+        throw new Error('远程方法 ' + method + ' 不可用（命名空间属性: ' + (keys.length ? keys.join(', ') : '(空)') + '）')
+      }
+      return fn.apply(null, args || [])
+    }
+
     function AgentSection(props) {
       var mountPromise = props.mount
       var getRemote = props.getRemote
@@ -175,7 +187,7 @@ window.__ModuleLoader__.load({
         function poll() {
           if (!alive) return
           try {
-            Promise.resolve(remote.status())
+            Promise.resolve(remoteCall(remote, 'status', []))
               .then(function (r) {
                 if (!alive) return
                 var v = unwrap(r)
@@ -214,7 +226,7 @@ window.__ModuleLoader__.load({
         setError(null)
         setNotice(null)
         try {
-          withTimeout(Promise.resolve(remote.onboard(gatewayUrl, pairingCode)), 15000).then(
+          withTimeout(Promise.resolve(remoteCall(remote, 'onboard', [gatewayUrl, pairingCode])), 15000).then(
             function (r) {
               setBusy(false)
               var v = unwrap(r)
@@ -239,7 +251,7 @@ window.__ModuleLoader__.load({
         if (!remote) return setError('客户端尚未就绪')
         setError(null)
         try {
-          Promise.resolve(remote.status()).then(
+          Promise.resolve(remoteCall(remote, 'status', [])).then(
             function (r) {
               var v = unwrap(r)
               if (v.error) setError(v.error)
@@ -276,8 +288,8 @@ window.__ModuleLoader__.load({
         'div',
         { style: S.wrap },
         createElement('div', { style: S.title }, '网关接入'),
-        createElement('p', { style: S.desc }, '把本机 dsh 接入网关：填网关地址与配对码，发起入网申请后由管理员在网关审批。'),
-        field('网关地址', 'ws://127.0.0.1:3300/agent', gatewayUrl, setGatewayUrl),
+        createElement('p', { style: S.desc }, '把本机 dsh 接入网关：填网关地址（协议 + 服务器地址，如 ws://127.0.0.1:3300）与配对码，发起入网申请后由管理员在网关审批。'),
+        field('网关地址', 'ws://127.0.0.1:3300', gatewayUrl, setGatewayUrl),
         field('配对码（管理员签发）', '一次性配对码', pairingCode, setPairingCode),
         createElement(
           'div',

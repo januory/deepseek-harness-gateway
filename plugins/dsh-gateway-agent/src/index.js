@@ -66,6 +66,24 @@ export function mintOperatorCookie(connection, dshPort) {
 // ---------------------------------------------------------------------------
 // Outbound connection + data-plane bridge.
 // ---------------------------------------------------------------------------
+
+/** Agent WebSocket path on the gateway (encapsulated, not user-entered). */
+const AGENT_WS_PATH = '/agent'
+
+/**
+ * Normalize a user-entered gateway base (e.g. `ws://127.0.0.1:3300`) into the
+ * agent endpoint (`ws://127.0.0.1:3300/agent`). Idempotent: a URL that already
+ * carries the path passes through unchanged.
+ */
+function agentWebSocketUrl(base) {
+  if (!base) return base
+  const s = String(base).trim()
+  if (!s) return s
+  const trimmed = s.replace(/\/+$/, '')
+  if (trimmed.endsWith(AGENT_WS_PATH)) return trimmed
+  return `${trimmed}${AGENT_WS_PATH}`
+}
+
 class Connection {
   constructor(onState, mintCookie, configStore) {
     this.ws = null
@@ -123,7 +141,7 @@ class Connection {
 
     let ws
     try {
-      ws = new WebSocket(gatewayUrl)
+      ws = new WebSocket(agentWebSocketUrl(gatewayUrl))
     } catch (e) {
       this.lastError = String(e && e.message ? e.message : e)
       this.setState('error')
@@ -492,7 +510,9 @@ export default function apply(ctx) {
     const typert = typertCtx.get('typert')
     console.log('[dsh-gateway-agent] typert inject fired; typert=', !!typert, 'register=', typeof (typert && typert.register))
     if (typert && typeof typert.register === 'function') {
-      typert.register({
+      // Return the registration disposer (mirror remote-workspaces) so the
+      // invocation registration stays tied to the inject lifecycle.
+      return typert.register({
         package: PACKAGE,
         face: 'host',
         schemas: [],
