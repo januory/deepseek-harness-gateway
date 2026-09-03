@@ -437,6 +437,7 @@ const INVOCATIONS = [
 // Plugin entry.
 // ---------------------------------------------------------------------------
 export default function apply(ctx) {
+  console.log('[dsh-gateway-agent] apply starting')
   const configStore = createConfigStore(configDir())
   const cfg = configStore.read()
   const dshPort = cfg.dshPort || 3080
@@ -473,6 +474,7 @@ export default function apply(ctx) {
       return { ok: true, applied: true, config: sanitizeConfig(next) }
     },
     async onboard(gatewayUrl, pairingCode) {
+      console.log('[dsh-gateway-agent] onboard called:', gatewayUrl)
       // Fresh onboarding: drop any prior node identity so the pairing code is used.
       const cfg = { ...configStore.read(), gatewayUrl, pairingCode }
       delete cfg.machineId
@@ -488,6 +490,7 @@ export default function apply(ctx) {
 
   ctx.inject(['typert'], (typertCtx) => {
     const typert = typertCtx.get('typert')
+    console.log('[dsh-gateway-agent] typert inject fired; typert=', !!typert, 'register=', typeof (typert && typert.register))
     if (typert && typeof typert.register === 'function') {
       typert.register({
         package: PACKAGE,
@@ -512,6 +515,7 @@ export default function apply(ctx) {
   // connect only AFTER the cookie is ready — avoids a 401 race where the first
   // relayed request arrives before the async mint completes.
   ctx.inject(['connection'], (cctx) => {
+    console.log('[dsh-gateway-agent] connection inject fired')
     connectionService = cctx.get('connection')
     if (connectionService && typeof connectionService.authenticatedUrl === 'function' && typeof connectionService.authorizeIndex === 'function') {
       const cookie = mintCookie()
@@ -527,4 +531,6 @@ export default function apply(ctx) {
     maybeConnect()
     return () => {}
   })
+
+  console.log('[dsh-gateway-agent] apply registered (waiting for connection service)')
 }
