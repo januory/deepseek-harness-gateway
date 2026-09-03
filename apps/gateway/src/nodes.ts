@@ -32,7 +32,6 @@ function sha256Hex(s: string): string {
 interface ConnectedNode {
   ws: WebSocketT
   machineId: string
-  tenantId: string
   status: MachineStatus
   leaseExpiry: number
   parser: BinaryFrameParser
@@ -81,19 +80,18 @@ export class NodeRegistry {
   constructor(private readonly store: IStore) {}
 
   /** Seed a pairing code from env/config (hashed in store, one-time, TTL). */
-  async seedPairingCode(code: string, tenantId: string, ttlMs = 600_000): Promise<void> {
+  async seedPairingCode(code: string, ttlMs = 600_000): Promise<void> {
     await this.store.upsertPairingCode({
       codeHash: sha256Hex(code),
-      tenantId,
       expiresAt: new Date(Date.now() + ttlMs).toISOString(),
     })
   }
 
   /** Issue a one-time pairing code; returns the plaintext code for the admin. */
-  async issuePairingCode(tenantId: string, ttlMs = 600_000): Promise<{ code: string; expiresAt: string }> {
+  async issuePairingCode(ttlMs = 600_000): Promise<{ code: string; expiresAt: string }> {
     const code = randomBytes(16).toString('hex')
     const expiresAt = new Date(Date.now() + ttlMs).toISOString()
-    await this.store.upsertPairingCode({ codeHash: sha256Hex(code), tenantId, expiresAt })
+    await this.store.upsertPairingCode({ codeHash: sha256Hex(code), expiresAt })
     return { code, expiresAt }
   }
 
@@ -122,9 +120,9 @@ export class NodeRegistry {
     return this.nodes.has(machineId)
   }
 
-  /** Live nodes: machineId → { status, tenantId }. */
-  listConnected(): Array<{ machineId: string; tenantId: string; status: MachineStatus }> {
-    return [...this.nodes.values()].map((n) => ({ machineId: n.machineId, tenantId: n.tenantId, status: n.status }))
+  /** Live nodes: machineId → { status }. */
+  listConnected(): Array<{ machineId: string; status: MachineStatus }> {
+    return [...this.nodes.values()].map((n) => ({ machineId: n.machineId, status: n.status }))
   }
 
   /** List machines for the portal/admin (durable metadata). */
@@ -150,7 +148,7 @@ export class NodeRegistry {
         JSON.stringify({ v: PROTOCOL_VERSION, type: 'registration_status', payload: { state: 'approved', machineId, leaseMs: LEASE_TTL_MS } }),
       )
     }
-    await this.store.appendAudit({ ts: new Date().toISOString(), actor: 'admin', tenantId: m.tenantId, machineId, action: 'approve_machine', result: 'ok' })
+    await this.store.appendAudit({ ts: new Date().toISOString(), actor: 'admin', machineId, action: 'approve_machine', result: 'ok' })
   }
 
   /** Revoke a machine and drop its live connection. */
@@ -163,7 +161,7 @@ export class NodeRegistry {
       node.ws.close(4003, 'machine revoked')
       this.nodes.delete(machineId)
     }
-    await this.store.appendAudit({ ts: new Date().toISOString(), actor: 'admin', tenantId: m.tenantId, machineId, action: 'revoke_machine', result: 'ok' })
+    await this.store.appendAudit({ ts: new Date().toISOString(), actor: 'admin', machineId, action: 'revoke_machine', result: 'ok' })
   }
 
   /** Delete a machine record entirely; drops its live connection if any. */
@@ -176,7 +174,7 @@ export class NodeRegistry {
       this.nodes.delete(machineId)
     }
     await this.store.deleteMachine(machineId)
-    await this.store.appendAudit({ ts: new Date().toISOString(), actor: 'admin', tenantId: m.tenantId, machineId, action: 'delete_machine', result: 'ok' })
+    await this.store.appendAudit({ ts: new Date().toISOString(), actor: 'admin', machineId, action: 'delete_machine', result: 'ok' })
   }
 
   /** Relay an HTTP request to a connected, approved node and await the response. */
@@ -324,10 +322,10 @@ export class NodeRegistry {
 
       if (!authed) {
         this.handleOnboarding(ws, msg)
-          .then(({ machineId: id, tenantId, state }) => {
+          .then(({ machineId: id, state }) => {
             machineId = id
             authed = true
-            this.nodes.set(id, { ws, machineId: id, tenantId, status: state, leaseExpiry: Date.now() + LEASE_TTL_MS, parser })
+            this.nodes.set(id, { ws, machineId: id, status: state, leaseExpiry: Date.now() + LEASE_TTL_MS, parser })
           })
           .catch((e) => console.log('[gateway] onboarding ERROR:', (e as Error).message ?? e))
         return
@@ -395,11 +393,11 @@ export class NodeRegistry {
     await this.store.upsertMachine(patch)
   }
 
-  /** Returns the authenticated machine id, its tenant, and its live status. */
+  /** Returns the authenticated machine id and its live status. */
   private async handleOnboarding(
     ws: WebSocketT,
     msg: any,
-  ): Promise<{ machineId: string; tenantId: string; state: MachineStatus }> {
+  ): Promise<{ machineId: string; state: MachineStatus }> {
     const { code, machineId, nodeKey, machineName, dshVersion } = msg.payload ?? {}
     console.log('[gateway] onboarding', code ? 'code=' + String(code).slice(0, 8) : 'reconnect machineId=' + machineId)
 
@@ -424,7 +422,6 @@ export class NodeRegistry {
       const nodeKey = randomBytes(32).toString('hex')
       await this.store.upsertMachine({
         id,
-        tenantId: pc.tenantId,
         name: machineName ?? 'node',
         nodeKeyHash: sha256Hex(nodeKey),
         status: 'pending',
@@ -434,10 +431,10 @@ export class NodeRegistry {
         lastHeartbeatAt: new Date().toISOString(),
       })
       await this.store.consumePairingCode(codeHash, id)
-      await this.store.appendAudit({ ts: new Date().toISOString(), actor: 'node', tenantId: pc.tenantId, machineId: id, action: 'register_pending', result: 'ok' })
+      await this.store.appendAudit({ ts: new Date().toISOString(), actor: 'node', machineId: id, action: 'register_pending', result: 'ok' })
 
       ws.send(JSON.stringify({ v: PROTOCOL_VERSION, type: 'registration_status', payload: { state: 'pending', machineId: id, nodeKey } }))
-      return { machineId: id, tenantId: pc.tenantId, state: 'pending' }
+      return { machineId: id, state: 'pending' }
     }
 
     // Reconnect with the issued node key.
@@ -465,7 +462,7 @@ export class NodeRegistry {
           payload: state === 'approved' ? { state, machineId: m.id, leaseMs: LEASE_TTL_MS } : { state, machineId: m.id },
         }),
       )
-      return { machineId: m.id, tenantId: m.tenantId, state }
+      return { machineId: m.id, state }
     }
 
     ws.close(4001, 'expected pairing code or machineId+nodeKey')

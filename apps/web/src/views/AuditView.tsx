@@ -1,14 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
-import type { AuditEvent, PublicUser, Tenant } from '../types'
+import type { AuditEvent, PublicUser } from '../types'
 import { Button, Card, Empty, PageHeader, ResultBadge, Spinner, formatTime, shortId } from '../ui'
 
 export function AuditView({ me }: { me: PublicUser }) {
-  const isPlatformAdmin = me.role === 'platform-admin'
-
   const [events, setEvents] = useState<AuditEvent[] | null>(null)
-  const [tenants, setTenants] = useState<Tenant[]>([])
-  const [tenantFilter, setTenantFilter] = useState(me.tenantId)
   const [machineFilter, setMachineFilter] = useState('')
   const [since, setSince] = useState('')
   const [err, setErr] = useState<string | null>(null)
@@ -17,7 +13,6 @@ export function AuditView({ me }: { me: PublicUser }) {
     setErr(null)
     try {
       const r = await api.audit({
-        tenantId: isPlatformAdmin ? tenantFilter : undefined,
         machineId: machineFilter.trim() || undefined,
         since: since || undefined,
       })
@@ -25,20 +20,11 @@ export function AuditView({ me }: { me: PublicUser }) {
     } catch (e) {
       setErr(String((e as Error).message ?? e))
     }
-  }, [isPlatformAdmin, tenantFilter, machineFilter, since])
+  }, [machineFilter, since])
 
   useEffect(() => {
     void load()
   }, [load])
-
-  useEffect(() => {
-    if (isPlatformAdmin) {
-      api
-        .tenants()
-        .then((r) => setTenants(r.tenants))
-        .catch(() => {})
-    }
-  }, [isPlatformAdmin])
 
   return (
     <>
@@ -50,18 +36,6 @@ export function AuditView({ me }: { me: PublicUser }) {
 
       <Card title="筛选">
         <div className="form-grid">
-          {isPlatformAdmin ? (
-            <div className="field">
-              <span className="field__label">租户</span>
-              <select className="select" value={tenantFilter} onChange={(e) => setTenantFilter(e.target.value)}>
-                {tenants.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.id}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
           <div className="field">
             <span className="field__label">机器 ID（前缀）</span>
             <input className="input" placeholder="可选" value={machineFilter} onChange={(e) => setMachineFilter(e.target.value)} />

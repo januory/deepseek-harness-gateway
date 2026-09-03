@@ -1,22 +1,14 @@
 // Portal-side wire types (mirror packages/store domain + control.ts responses).
 
-export type Role = 'platform-admin' | 'tenant-admin' | 'user'
+export type Role = 'system-admin' | 'admin' | 'user'
 
 export interface PublicUser {
   id: string
-  tenantId: string
   role: Role
-}
-
-export interface Tenant {
-  id: string
-  name: string
-  createdAt: string
 }
 
 export interface UserView {
   id: string
-  tenantId: string
   role: Role
 }
 
@@ -29,7 +21,6 @@ export interface SeatView {
 
 export interface MachineView {
   id: string
-  tenantId: string
   name: string
   status: MachineStatus
   dshVersion?: string
@@ -47,7 +38,6 @@ export interface Assignment {
 }
 
 export interface PairingCodeView {
-  tenantId: string
   machineId?: string
   consumedBy?: string
   expiresAt: string
@@ -58,7 +48,6 @@ export type AuditResult = 'ok' | 'denied' | 'error'
 export interface AuditEvent {
   ts: string
   actor: string
-  tenantId: string
   machineId?: string
   action: string
   result: AuditResult

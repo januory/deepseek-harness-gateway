@@ -9,7 +9,6 @@ import type {
   PublicUser,
   Role,
   SeatView,
-  Tenant,
   UserView,
 } from './types'
 
@@ -63,17 +62,12 @@ export const api = {
     req<{ user: PublicUser }>('/gw/login', { method: 'POST', body: JSON.stringify({ id, password }) }),
   logout: () => req<{ ok: boolean }>('/gw/logout', { method: 'POST' }),
 
-  // ---- tenants (platform-admin) ---------------------------------------------
-  tenants: () => req<{ tenants: Tenant[] }>('/gw/tenants'),
-  createTenant: (id: string, name: string) =>
-    req<{ ok: boolean; tenant: Tenant }>('/gw/tenants', { method: 'POST', body: JSON.stringify({ id, name }) }),
-
   // ---- users ------------------------------------------------------------------
-  users: (tenantId?: string) => req<{ users: UserView[] }>('/gw/users' + qs({ tenantId })),
-  createUser: (id: string, password: string, role: Role, tenantId?: string) =>
+  users: () => req<{ users: UserView[] }>('/gw/users'),
+  createUser: (id: string, password: string, role: Role) =>
     req<{ ok: boolean; user: UserView }>('/gw/users', {
       method: 'POST',
-      body: JSON.stringify({ id, password, role, tenantId }),
+      body: JSON.stringify({ id, password, role }),
     }),
 
   // ---- machines ---------------------------------------------------------------
@@ -83,18 +77,18 @@ export const api = {
   deleteMachine: (id: string) => req<{ ok: boolean }>('/gw/machines/' + id, { method: 'DELETE' }),
 
   // ---- assignments -------------------------------------------------------------
-  assignments: (tenantId?: string) => req<{ assignments: Assignment[] }>('/gw/assignments' + qs({ tenantId })),
+  assignments: () => req<{ assignments: Assignment[] }>('/gw/assignments'),
   assign: (machineId: string, userId: string) =>
     req<{ ok: boolean }>('/gw/assignments', { method: 'POST', body: JSON.stringify({ machineId, userId }) }),
   unassign: (machineId: string, userId: string) =>
     req<{ ok: boolean }>('/gw/assignments/' + machineId + '/' + userId, { method: 'DELETE' }),
 
   // ---- pairing codes -------------------------------------------------------------
-  pairingCodes: (tenantId?: string) => req<{ codes: PairingCodeView[] }>('/gw/pairing-codes' + qs({ tenantId })),
-  issuePairingCode: (tenantId?: string, ttlMs?: number) =>
-    req<{ ok: boolean; code: string; expiresAt: string; tenantId: string }>('/gw/pairing-codes', {
+  pairingCodes: () => req<{ codes: PairingCodeView[] }>('/gw/pairing-codes'),
+  issuePairingCode: (ttlMs?: number) =>
+    req<{ ok: boolean; code: string; expiresAt: string }>('/gw/pairing-codes', {
       method: 'POST',
-      body: JSON.stringify({ tenantId, ttlMs }),
+      body: JSON.stringify({ ttlMs }),
     }),
 
   // ---- console seats ---------------------------------------------------------------
@@ -107,6 +101,6 @@ export const api = {
   seat: (machineId: string) => req<{ seat: SeatView | null }>('/gw/seats/' + machineId),
 
   // ---- audit -------------------------------------------------------------------------
-  audit: (filters: { tenantId?: string; machineId?: string; since?: string } = {}) =>
+  audit: (filters: { machineId?: string; since?: string } = {}) =>
     req<{ events: AuditEvent[] }>('/gw/audit' + qs(filters)),
 }

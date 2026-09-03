@@ -4,14 +4,13 @@ import type { MachineView, PublicUser } from './types'
 import { RoleBadge, ToastProvider } from './ui'
 import { LoginView } from './views/LoginView'
 import { MachinesView } from './views/MachinesView'
-import { TenantsView } from './views/TenantsView'
 import { UsersView } from './views/UsersView'
 import { AssignmentsView } from './views/AssignmentsView'
 import { PairingCodesView } from './views/PairingCodesView'
 import { AuditView } from './views/AuditView'
 import { ConsoleView } from './views/ConsoleView'
 
-type ViewKey = 'machines' | 'tenants' | 'users' | 'assignments' | 'pairing' | 'audit'
+type ViewKey = 'machines' | 'users' | 'assignments' | 'pairing' | 'audit'
 
 interface NavItem {
   key: ViewKey
@@ -25,7 +24,6 @@ const NAV: NavItem[] = [
   { key: 'assignments', label: '分配', visible: (me) => me.role !== 'user' },
   { key: 'pairing', label: '配对码', visible: (me) => me.role !== 'user' },
   { key: 'audit', label: '审计', visible: (me) => me.role !== 'user' },
-  { key: 'tenants', label: '租户', visible: (me) => me.role === 'platform-admin' },
 ]
 
 function Shell({ me, onLogout }: { me: PublicUser; onLogout: () => void }) {
@@ -45,7 +43,7 @@ function Shell({ me, onLogout }: { me: PublicUser; onLogout: () => void }) {
       <aside className="sidebar">
         <div className="sidebar__brand">
           dsh-gateway
-          <small>多租户受管网关路由器</small>
+          <small>受管网关路由器</small>
         </div>
         <nav>
           {items.map((n) => (
@@ -82,7 +80,6 @@ function Shell({ me, onLogout }: { me: PublicUser; onLogout: () => void }) {
             {active === 'assignments' ? <AssignmentsView me={me} /> : null}
             {active === 'pairing' ? <PairingCodesView me={me} /> : null}
             {active === 'audit' ? <AuditView me={me} /> : null}
-            {active === 'tenants' ? <TenantsView me={me} /> : null}
           </div>
         )}
       </main>

@@ -8,26 +8,14 @@
 
 import { sqliteTable, text, integer, primaryKey } from 'drizzle-orm/sqlite-core'
 
-export const tenants = sqliteTable('tenants', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  createdAt: text('created_at').notNull(),
-})
-
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
-  tenantId: text('tenant_id')
-    .notNull()
-    .references(() => tenants.id, { onDelete: 'cascade' }),
-  role: text('role').notNull(), // Role: platform-admin | tenant-admin | user
+  role: text('role').notNull(), // Role: system-admin | admin | user
   authHash: text('auth_hash').notNull(),
 })
 
 export const machines = sqliteTable('machines', {
   id: text('id').primaryKey(),
-  tenantId: text('tenant_id')
-    .notNull()
-    .references(() => tenants.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   nodeKeyHash: text('node_key_hash').notNull(),
   status: text('status').notNull(), // MachineStatus: pending | approved | revoked
@@ -53,9 +41,6 @@ export const assignments = sqliteTable(
 
 export const pairingCodes = sqliteTable('pairing_codes', {
   codeHash: text('code_hash').primaryKey(),
-  tenantId: text('tenant_id')
-    .notNull()
-    .references(() => tenants.id, { onDelete: 'cascade' }),
   machineId: text('machine_id'),
   expiresAt: text('expires_at').notNull(),
   consumedBy: text('consumed_by'),
@@ -78,9 +63,6 @@ export const auditEvents = sqliteTable('audit_events', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   ts: text('ts').notNull(),
   actor: text('actor').notNull(),
-  tenantId: text('tenant_id')
-    .notNull()
-    .references(() => tenants.id, { onDelete: 'cascade' }),
   machineId: text('machine_id'),
   action: text('action').notNull(),
   result: text('result').notNull(), // ok | denied | error

@@ -3,7 +3,7 @@
 // - Opaque, high-entropy session ids in an HttpOnly / SameSite=Strict cookie
 //   (no signing needed: the token itself is the secret).
 // - Passwords are stored only as scrypt hashes (never plaintext).
-// - A bootstrap platform admin + default tenant are ensured on startup.
+// - A bootstrap system admin is ensured on startup.
 // - `requireRole(...)` is a fail-closed guard for control-plane routes.
 
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
@@ -62,27 +62,23 @@ export class SessionStore {
 export interface BootstrapOptions {
   adminId: string
   adminPassword: string
-  tenantId?: string
 }
 
 export async function bootstrap(store: IStore, opts: BootstrapOptions): Promise<void> {
-  const tenantId = opts.tenantId ?? 'default'
   const now = new Date().toISOString()
-  await store.upsertTenant({ id: tenantId, name: 'Default', createdAt: now })
   const admin = await store.getUser(opts.adminId)
   if (!admin) {
     await store.upsertUser({
       id: opts.adminId,
-      tenantId,
-      role: 'platform-admin',
+      role: 'system-admin',
       authHash: hashPassword(opts.adminPassword),
     })
-    await store.appendAudit({ ts: now, actor: 'system', tenantId, action: 'bootstrap_admin', result: 'ok' })
+    await store.appendAudit({ ts: now, actor: 'system', action: 'bootstrap_admin', result: 'ok' })
   }
 }
 
 export function publicUser(u: User) {
-  return { id: u.id, tenantId: u.tenantId, role: u.role }
+  return { id: u.id, role: u.role }
 }
 
 export interface Auth {
@@ -115,7 +111,7 @@ export function buildAuth(): Auth {
       }
       const token = sessions.create(user.id)
       reply.setCookie(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'strict', path: '/', secure: false })
-      await store.appendAudit({ ts: new Date().toISOString(), actor: user.id, tenantId: user.tenantId, action: 'login', result: 'ok' })
+      await store.appendAudit({ ts: new Date().toISOString(), actor: user.id, action: 'login', result: 'ok' })
       return { ok: true, user: publicUser(user) }
     })
 

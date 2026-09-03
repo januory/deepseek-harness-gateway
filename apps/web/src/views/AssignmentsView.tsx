@@ -1,17 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
-import type { Assignment, MachineView, PublicUser, Tenant, UserView } from '../types'
+import type { Assignment, MachineView, PublicUser, UserView } from '../types'
 import { Button, Card, Empty, Field, PageHeader, Spinner, formatTime, shortId, useToast } from '../ui'
 
 export function AssignmentsView({ me }: { me: PublicUser }) {
-  const isPlatformAdmin = me.role === 'platform-admin'
   const toast = useToast()
 
   const [assignments, setAssignments] = useState<Assignment[] | null>(null)
   const [machines, setMachines] = useState<MachineView[]>([])
   const [users, setUsers] = useState<UserView[]>([])
-  const [tenants, setTenants] = useState<Tenant[]>([])
-  const [tenantFilter, setTenantFilter] = useState(me.tenantId)
   const [err, setErr] = useState<string | null>(null)
 
   // assign form
@@ -22,11 +19,7 @@ export function AssignmentsView({ me }: { me: PublicUser }) {
   const load = useCallback(async () => {
     setErr(null)
     try {
-      const [a, m, u] = await Promise.all([
-        api.assignments(isPlatformAdmin ? tenantFilter : undefined),
-        api.machines(),
-        api.users(isPlatformAdmin ? tenantFilter : undefined),
-      ])
+      const [a, m, u] = await Promise.all([api.assignments(), api.machines(), api.users()])
       setAssignments(a.assignments)
       setMachines(m.machines)
       setUsers(u.users)
@@ -35,20 +28,11 @@ export function AssignmentsView({ me }: { me: PublicUser }) {
     } catch (e) {
       setErr(String((e as Error).message ?? e))
     }
-  }, [isPlatformAdmin, tenantFilter])
+  }, [])
 
   useEffect(() => {
     void load()
   }, [load])
-
-  useEffect(() => {
-    if (isPlatformAdmin) {
-      api
-        .tenants()
-        .then((r) => setTenants(r.tenants))
-        .catch(() => {})
-    }
-  }, [isPlatformAdmin])
 
   const machineName = useCallback(
     (id: string) => machines.find((m) => m.id === id)?.name ?? shortId(id),
@@ -120,20 +104,7 @@ export function AssignmentsView({ me }: { me: PublicUser }) {
         </div>
       </Card>
 
-      <Card
-        title="分配列表"
-        actions={
-          isPlatformAdmin ? (
-            <select className="select" value={tenantFilter} onChange={(e) => setTenantFilter(e.target.value)}>
-              {tenants.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.id}
-                </option>
-              ))}
-            </select>
-          ) : undefined
-        }
-      >
+      <Card title="分配列表">
         {err ? <div className="login-error">{err}</div> : null}
         {assignments === null ? (
           <Spinner />

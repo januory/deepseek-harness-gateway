@@ -21,8 +21,8 @@ export function StatusDot({ online }: { online: boolean }) {
 }
 
 export function RoleBadge({ role }: { role: Role }) {
-  const cls = role === 'platform-admin' ? 'badge--purple' : role === 'tenant-admin' ? 'badge--blue' : 'badge--gray'
-  const label = role === 'platform-admin' ? '平台管理员' : role === 'tenant-admin' ? '租户管理员' : '普通用户'
+  const cls = role === 'system-admin' ? 'badge--purple' : role === 'admin' ? 'badge--blue' : 'badge--gray'
+  const label = role === 'system-admin' ? '系统管理员' : role === 'admin' ? '管理员' : '普通用户'
   return <span className={`badge ${cls}`}>{label}</span>
 }
 

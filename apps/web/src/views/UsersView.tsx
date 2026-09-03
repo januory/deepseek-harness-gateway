@@ -1,46 +1,34 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
-import type { PublicUser, Role, Tenant, UserView } from '../types'
+import type { PublicUser, Role, UserView } from '../types'
 import { Button, Card, Empty, Field, PageHeader, RoleBadge, Spinner, useToast } from '../ui'
 
 export function UsersView({ me }: { me: PublicUser }) {
-  const isPlatformAdmin = me.role === 'platform-admin'
+  const isSystemAdmin = me.role === 'system-admin'
   const toast = useToast()
 
   const [users, setUsers] = useState<UserView[] | null>(null)
-  const [tenants, setTenants] = useState<Tenant[]>([])
-  const [tenantFilter, setTenantFilter] = useState(me.tenantId)
   const [err, setErr] = useState<string | null>(null)
 
   // create form
   const [id, setId] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState<Role>('user')
-  const [tenantId, setTenantId] = useState(me.tenantId)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(async () => {
     setErr(null)
     try {
-      const r = await api.users(isPlatformAdmin ? tenantFilter : undefined)
+      const r = await api.users()
       setUsers(r.users)
     } catch (e) {
       setErr(String((e as Error).message ?? e))
     }
-  }, [isPlatformAdmin, tenantFilter])
+  }, [])
 
   useEffect(() => {
     void load()
   }, [load])
-
-  useEffect(() => {
-    if (isPlatformAdmin) {
-      api
-        .tenants()
-        .then((r) => setTenants(r.tenants))
-        .catch(() => {})
-    }
-  }, [isPlatformAdmin])
 
   async function create() {
     if (!id.trim() || !password) {
@@ -49,7 +37,7 @@ export function UsersView({ me }: { me: PublicUser }) {
     }
     setBusy(true)
     try {
-      await api.createUser(id.trim(), password, role, isPlatformAdmin ? tenantId : undefined)
+      await api.createUser(id.trim(), password, role)
       toast('ok', `已创建用户 ${id.trim()}`)
       setId('')
       setPassword('')
@@ -82,50 +70,21 @@ export function UsersView({ me }: { me: PublicUser }) {
           <Field label="角色">
             <select className="select" value={role} onChange={(e) => setRole(e.target.value as Role)}>
               <option value="user">普通用户</option>
-              <option value="tenant-admin">租户管理员</option>
-              {isPlatformAdmin ? <option value="platform-admin">平台管理员</option> : null}
+              <option value="admin">管理员</option>
+              {isSystemAdmin ? <option value="system-admin">系统管理员</option> : null}
             </select>
           </Field>
-          {isPlatformAdmin ? (
-            <Field label="租户">
-              <select className="select" value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
-                {tenants.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.id}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          ) : null}
           <Button variant="primary" disabled={busy} onClick={() => void create()}>
             创建
           </Button>
         </div>
       </Card>
 
-      {isPlatformAdmin ? (
-        <Card title="用户列表">
-          <div className="card__body" style={{ paddingTop: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, maxWidth: 320 }}>
-              <span className="field__label">按租户筛选</span>
-              <select className="select" style={{ flex: 1 }} value={tenantFilter} onChange={(e) => setTenantFilter(e.target.value)}>
-                {tenants.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.id}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <UsersTable users={users} />
-        </Card>
-      ) : (
-        <Card title="用户列表">
-          <UsersTable users={users} />
-        </Card>
-      )}
-
       {err ? <div className="login-error">{err}</div> : null}
+
+      <Card title="用户列表">
+        <UsersTable users={users} />
+      </Card>
     </>
   )
 }
@@ -140,7 +99,6 @@ function UsersTable({ users }: { users: UserView[] | null }) {
           <tr>
             <th>账号</th>
             <th>角色</th>
-            <th>租户</th>
           </tr>
         </thead>
         <tbody>
@@ -150,7 +108,6 @@ function UsersTable({ users }: { users: UserView[] | null }) {
               <td>
                 <RoleBadge role={u.role} />
               </td>
-              <td className="mono muted">{u.tenantId}</td>
             </tr>
           ))}
         </tbody>

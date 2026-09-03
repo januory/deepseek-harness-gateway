@@ -1,7 +1,7 @@
 // Durable SQLite IStore (ADR-0007): better-sqlite3 + Drizzle ORM.
 //
-// - Persistent source data: tenants / users / machines / assignments /
-//   pairing_codes / audit_events — transactional, with foreign keys.
+// - Persistent source data: users / machines / assignments / pairing_codes /
+//   audit_events — transactional, with foreign keys.
 // - The console-seat mutex is kept in process memory (single-writer v1); the
 //   `seats` table is written through as an audit helper only.
 // - Relay payloads (HTTP/WS frames) are never persisted here.
@@ -15,7 +15,6 @@ import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { and, asc, eq, gte } from 'drizzle-orm'
 import type {
-  Tenant,
   User,
   Machine,
   Assignment,
@@ -37,18 +36,13 @@ export interface SqliteStoreOptions {
   runMigrations?: boolean
 }
 
-function tenantRow(t: Tenant) {
-  return { id: t.id, name: t.name, createdAt: t.createdAt }
-}
-
 function userRow(u: User) {
-  return { id: u.id, tenantId: u.tenantId, role: u.role as Role, authHash: u.authHash }
+  return { id: u.id, role: u.role as Role, authHash: u.authHash }
 }
 
 function machineRow(m: Machine) {
   return {
     id: m.id,
-    tenantId: m.tenantId,
     name: m.name,
     nodeKeyHash: m.nodeKeyHash,
     status: m.status as MachineStatus,
@@ -62,7 +56,6 @@ function machineRow(m: Machine) {
 function machineFromRow(r: typeof schema.machines.$inferSelect): Machine {
   return {
     id: r.id,
-    tenantId: r.tenantId,
     name: r.name,
     nodeKeyHash: r.nodeKeyHash,
     status: r.status as MachineStatus,
@@ -114,24 +107,6 @@ export class SqliteStore implements IStore {
     this.raw?.close()
   }
 
-  async upsertTenant(t: Tenant): Promise<void> {
-    const row = tenantRow(t)
-    await this.db
-      .insert(schema.tenants)
-      .values(row)
-      .onConflictDoUpdate({ target: schema.tenants.id, set: { name: row.name, createdAt: row.createdAt } })
-  }
-
-  async getTenant(id: string): Promise<Tenant | undefined> {
-    const r = await this.db.select().from(schema.tenants).where(eq(schema.tenants.id, id)).get()
-    return r ? { id: r.id, name: r.name, createdAt: r.createdAt } : undefined
-  }
-
-  async listTenants(): Promise<Tenant[]> {
-    const rows = await this.db.select().from(schema.tenants)
-    return rows.map((r) => ({ id: r.id, name: r.name, createdAt: r.createdAt }))
-  }
-
   async upsertUser(u: User): Promise<void> {
     const row = userRow(u)
     await this.db
@@ -139,18 +114,18 @@ export class SqliteStore implements IStore {
       .values(row)
       .onConflictDoUpdate({
         target: schema.users.id,
-        set: { tenantId: row.tenantId, role: row.role, authHash: row.authHash },
+        set: { role: row.role, authHash: row.authHash },
       })
   }
 
   async getUser(id: string): Promise<User | undefined> {
     const r = await this.db.select().from(schema.users).where(eq(schema.users.id, id)).get()
-    return r ? { id: r.id, tenantId: r.tenantId, role: r.role as Role, authHash: r.authHash } : undefined
+    return r ? { id: r.id, role: r.role as Role, authHash: r.authHash } : undefined
   }
 
-  async listUsers(tenantId: string): Promise<User[]> {
-    const rows = await this.db.select().from(schema.users).where(eq(schema.users.tenantId, tenantId))
-    return rows.map((r) => ({ id: r.id, tenantId: r.tenantId, role: r.role as Role, authHash: r.authHash }))
+  async listUsers(): Promise<User[]> {
+    const rows = await this.db.select().from(schema.users)
+    return rows.map((r) => ({ id: r.id, role: r.role as Role, authHash: r.authHash }))
   }
 
   async upsertMachine(m: Machine): Promise<void> {
@@ -161,7 +136,6 @@ export class SqliteStore implements IStore {
       .onConflictDoUpdate({
         target: schema.machines.id,
         set: {
-          tenantId: row.tenantId,
           name: row.name,
           nodeKeyHash: row.nodeKeyHash,
           status: row.status,
@@ -178,8 +152,8 @@ export class SqliteStore implements IStore {
     return r ? machineFromRow(r) : undefined
   }
 
-  async listMachines(tenantId: string): Promise<Machine[]> {
-    const rows = await this.db.select().from(schema.machines).where(eq(schema.machines.tenantId, tenantId))
+  async listMachines(): Promise<Machine[]> {
+    const rows = await this.db.select().from(schema.machines)
     return rows.map(machineFromRow)
   }
 
@@ -207,7 +181,7 @@ export class SqliteStore implements IStore {
     return rows.map((r) => ({ machineId: r.machineId, userId: r.userId, createdAt: r.createdAt }))
   }
 
-  async listAssignments(tenantId: string): Promise<Assignment[]> {
+  async listAssignments(): Promise<Assignment[]> {
     const rows = await this.db
       .select({
         machineId: schema.assignments.machineId,
@@ -215,8 +189,6 @@ export class SqliteStore implements IStore {
         createdAt: schema.assignments.createdAt,
       })
       .from(schema.assignments)
-      .innerJoin(schema.machines, eq(schema.assignments.machineId, schema.machines.id))
-      .where(eq(schema.machines.tenantId, tenantId))
     return rows.map((r) => ({ machineId: r.machineId, userId: r.userId, createdAt: r.createdAt }))
   }
 
@@ -225,14 +197,13 @@ export class SqliteStore implements IStore {
       .insert(schema.pairingCodes)
       .values({
         codeHash: c.codeHash,
-        tenantId: c.tenantId,
         machineId: c.machineId ?? null,
         expiresAt: c.expiresAt,
         consumedBy: c.consumedBy ?? null,
       })
       .onConflictDoUpdate({
         target: schema.pairingCodes.codeHash,
-        set: { tenantId: c.tenantId, machineId: c.machineId ?? null, expiresAt: c.expiresAt, consumedBy: c.consumedBy ?? null },
+        set: { machineId: c.machineId ?? null, expiresAt: c.expiresAt, consumedBy: c.consumedBy ?? null },
       })
   }
 
@@ -241,7 +212,6 @@ export class SqliteStore implements IStore {
     return r
       ? {
           codeHash: r.codeHash,
-          tenantId: r.tenantId,
           machineId: r.machineId ?? undefined,
           expiresAt: r.expiresAt,
           consumedBy: r.consumedBy ?? undefined,
@@ -256,11 +226,10 @@ export class SqliteStore implements IStore {
       .where(eq(schema.pairingCodes.codeHash, codeHash))
   }
 
-  async listPairingCodes(tenantId: string): Promise<PairingCode[]> {
-    const rows = await this.db.select().from(schema.pairingCodes).where(eq(schema.pairingCodes.tenantId, tenantId))
+  async listPairingCodes(): Promise<PairingCode[]> {
+    const rows = await this.db.select().from(schema.pairingCodes)
     return rows.map((r) => ({
       codeHash: r.codeHash,
-      tenantId: r.tenantId,
       machineId: r.machineId ?? undefined,
       expiresAt: r.expiresAt,
       consumedBy: r.consumedBy ?? undefined,
@@ -299,7 +268,6 @@ export class SqliteStore implements IStore {
     await this.db.insert(schema.auditEvents).values({
       ts: e.ts,
       actor: e.actor,
-      tenantId: e.tenantId,
       machineId: e.machineId ?? null,
       action: e.action,
       result: e.result,
@@ -307,22 +275,18 @@ export class SqliteStore implements IStore {
     })
   }
 
-  async queryAudit(
-    tenantId: string,
-    opts: { since?: string; machineId?: string } = {},
-  ): Promise<AuditEvent[]> {
-    const conds = [eq(schema.auditEvents.tenantId, tenantId)]
+  async queryAudit(opts: { since?: string; machineId?: string } = {}): Promise<AuditEvent[]> {
+    const conds = []
     if (opts.machineId !== undefined) conds.push(eq(schema.auditEvents.machineId, opts.machineId))
     if (opts.since !== undefined) conds.push(gte(schema.auditEvents.ts, opts.since))
     const rows = await this.db
       .select()
       .from(schema.auditEvents)
-      .where(and(...conds))
+      .where(conds.length ? and(...conds) : undefined)
       .orderBy(asc(schema.auditEvents.ts))
     return rows.map((r) => ({
       ts: r.ts,
       actor: r.actor,
-      tenantId: r.tenantId,
       machineId: r.machineId ?? undefined,
       action: r.action,
       result: r.result as AuditEvent['result'],

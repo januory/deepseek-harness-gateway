@@ -24,10 +24,7 @@ export async function authorizeConsole(
   if (!m) return { allowed: false, status: 404, error: 'machine not found' }
   if (m.status !== 'approved') return { allowed: false, status: 409, error: 'machine not approved' }
 
-  // Tenant/assignment scope.
-  if (user.role === 'tenant-admin' && m.tenantId !== user.tenantId) {
-    return { allowed: false, status: 403, error: 'forbidden' }
-  }
+  // Assignment scope: regular users must be assigned; admins reach any machine.
   if (user.role === 'user') {
     const assigned = (await store.listAssignmentsForUser(user.id)).some((a) => a.machineId === machineId)
     if (!assigned) return { allowed: false, status: 403, error: 'not assigned to this machine' }

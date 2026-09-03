@@ -1,7 +1,6 @@
 export type {
   Role,
   MachineStatus,
-  Tenant,
   User,
   Machine,
   Assignment,

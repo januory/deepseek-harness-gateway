@@ -26,7 +26,7 @@ const app = Fastify({ logger: true })
 const store = new SqliteStore({ filename: DB_PATH })
 await store.open()
 
-// Ensure the bootstrap platform admin + default tenant exist.
+// Ensure the bootstrap system admin exists.
 await bootstrap(store, { adminId: ADMIN_ID, adminPassword: ADMIN_PASSWORD })
 if (process.env.GATEWAY_ADMIN_PASSWORD === undefined) {
   app.log.warn('using default bootstrap admin password ("admin") — set GATEWAY_ADMIN_PASSWORD in production')
@@ -35,14 +35,12 @@ if (process.env.GATEWAY_ADMIN_PASSWORD === undefined) {
 const auth = buildAuth()
 const registry = new NodeRegistry(store)
 
-// Seed one-time pairing codes for testing: GATEWAY_PAIRING_CODES="code:tenantId,..."
-for (const entry of (process.env.GATEWAY_PAIRING_CODES ?? '').split(',').filter(Boolean)) {
-  const [code, tenantId = 'default'] = entry.split(':')
-  if (!code) continue
+// Seed one-time pairing codes for testing: GATEWAY_PAIRING_CODES="code,code,..."
+for (const code of (process.env.GATEWAY_PAIRING_CODES ?? '').split(',').filter(Boolean)) {
   try {
-    await registry.seedPairingCode(code, tenantId)
+    await registry.seedPairingCode(code)
   } catch (e) {
-    app.log.warn(`failed to seed pairing code for tenant "${tenantId}": ${String((e as Error).message ?? e)}`)
+    app.log.warn(`failed to seed pairing code "${code}": ${String((e as Error).message ?? e)}`)
   }
 }
 registry.start()
@@ -53,7 +51,7 @@ registerRouter(app, registry, store)
 // Portal-user auth (session cookie + login/logout/me).
 await auth.register(app, store)
 
-// Control-plane REST API (tenants/users/machines/assignments/pairing-codes/seats/audit).
+// Control-plane REST API (users/machines/assignments/pairing-codes/seats/audit).
 await registerControl(app, store, registry, auth)
 
 app.get('/health', async () => ({

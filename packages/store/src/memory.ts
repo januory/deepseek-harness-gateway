@@ -1,8 +1,6 @@
-// In-memory IStore for the P0 skeleton and tests. Not durable; replaces SQLite
-// until the Drizzle implementation lands (ADR-0007: durable = registry + audit).
+// In-memory IStore for the P0 skeleton and tests. Not durable.
 
 import type {
-  Tenant,
   User,
   Machine,
   Assignment,
@@ -13,7 +11,6 @@ import type {
 import type { IStore } from './IStore.js'
 
 export class InMemoryStore implements IStore {
-  private tenants = new Map<string, Tenant>()
   private users = new Map<string, User>()
   private machines = new Map<string, Machine>()
   private assignments = new Map<string, Assignment>() // `${machineId}:${userId}`
@@ -24,24 +21,14 @@ export class InMemoryStore implements IStore {
   async open(): Promise<void> {}
   async close(): Promise<void> {}
 
-  async upsertTenant(t: Tenant): Promise<void> {
-    this.tenants.set(t.id, t)
-  }
-  async getTenant(id: string): Promise<Tenant | undefined> {
-    return this.tenants.get(id)
-  }
-  async listTenants(): Promise<Tenant[]> {
-    return [...this.tenants.values()]
-  }
-
   async upsertUser(u: User): Promise<void> {
     this.users.set(u.id, u)
   }
   async getUser(id: string): Promise<User | undefined> {
     return this.users.get(id)
   }
-  async listUsers(tenantId: string): Promise<User[]> {
-    return [...this.users.values()].filter((u) => u.tenantId === tenantId)
+  async listUsers(): Promise<User[]> {
+    return [...this.users.values()]
   }
 
   async upsertMachine(m: Machine): Promise<void> {
@@ -50,8 +37,8 @@ export class InMemoryStore implements IStore {
   async getMachine(id: string): Promise<Machine | undefined> {
     return this.machines.get(id)
   }
-  async listMachines(tenantId: string): Promise<Machine[]> {
-    return [...this.machines.values()].filter((m) => m.tenantId === tenantId)
+  async listMachines(): Promise<Machine[]> {
+    return [...this.machines.values()]
   }
   async deleteMachine(id: string): Promise<void> {
     this.machines.delete(id)
@@ -70,8 +57,8 @@ export class InMemoryStore implements IStore {
   async listAssignmentsForUser(userId: string): Promise<Assignment[]> {
     return [...this.assignments.values()].filter((a) => a.userId === userId)
   }
-  async listAssignments(tenantId: string): Promise<Assignment[]> {
-    return [...this.assignments.values()].filter((a) => this.machines.get(a.machineId)?.tenantId === tenantId)
+  async listAssignments(): Promise<Assignment[]> {
+    return [...this.assignments.values()]
   }
 
   async upsertPairingCode(c: PairingCode): Promise<void> {
@@ -87,8 +74,8 @@ export class InMemoryStore implements IStore {
       c.machineId = machineId
     }
   }
-  async listPairingCodes(tenantId: string): Promise<PairingCode[]> {
-    return [...this.pairingCodes.values()].filter((c) => c.tenantId === tenantId)
+  async listPairingCodes(): Promise<PairingCode[]> {
+    return [...this.pairingCodes.values()]
   }
 
   async acquireSeat(seat: Seat): Promise<boolean> {
@@ -108,13 +95,9 @@ export class InMemoryStore implements IStore {
   async appendAudit(e: AuditEvent): Promise<void> {
     this.audit.push(e)
   }
-  async queryAudit(
-    tenantId: string,
-    opts: { since?: string; machineId?: string } = {},
-  ): Promise<AuditEvent[]> {
+  async queryAudit(opts: { since?: string; machineId?: string } = {}): Promise<AuditEvent[]> {
     return this.audit.filter(
       (e) =>
-        e.tenantId === tenantId &&
         (opts.machineId === undefined || e.machineId === opts.machineId) &&
         (opts.since === undefined || e.ts >= opts.since),
     )

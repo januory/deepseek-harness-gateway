@@ -100,7 +100,6 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
                 <tr>
                   <th>状态</th>
                   <th>机器</th>
-                  {isAdmin ? <th>租户</th> : null}
                   <th>版本</th>
                   <th>最后心跳</th>
                   <th>席位</th>
@@ -124,7 +123,6 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
                           {shortId(m.id)}
                         </div>
                       </td>
-                      {isAdmin ? <td className="mono muted">{m.tenantId}</td> : null}
                       <td className="mono muted">{m.dshVersion || '—'}</td>
                       <td className="muted">{formatTime(m.lastHeartbeatAt)}</td>
                       <td className="muted">
