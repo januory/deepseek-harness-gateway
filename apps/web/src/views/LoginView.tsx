@@ -27,7 +27,7 @@ export function LoginView({ onLogin }: { onLogin: (u: PublicUser) => void }) {
     <div className="login-wrap">
       <form className="login-card" onSubmit={submit}>
         <h1>deepseek-harness-gateway</h1>
-        <div className="sub">多租户受管网关路由器 · 控制台</div>
+        <div className="sub">受管网关路由器 · 控制台</div>
         <Field label="账号">
           <input
             className="input"
