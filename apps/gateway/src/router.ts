@@ -16,6 +16,17 @@ const DROP_HEADERS = new Set([
   'transfer-encoding',
   'upgrade',
   'keep-alive',
+  // Browser trust-fence markers: the machine's dsh web is loopback-only and
+  // rejects requests whose Origin/Referer/sec-fetch markers don't match its own
+  // authority (the agent rewrites Host to 127.0.0.1:<port>, but the browser's
+  // Origin still names the gateway). Strip them so the relayed request reads as
+  // a clean same-origin loopback request.
+  'origin',
+  'referer',
+  'sec-fetch-site',
+  'sec-fetch-mode',
+  'sec-fetch-dest',
+  'sec-fetch-user',
 ])
 
 function queryString(req: FastifyRequest): string {
