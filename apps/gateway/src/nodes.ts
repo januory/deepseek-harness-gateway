@@ -260,10 +260,16 @@ export class NodeRegistry {
 
   private attachBrowserWs(bws: WebSocketT, machineId: string, restPath: string, headers: Record<string, string>): void {
     let channel: number
+    let upBytes = 0
+    let downBytes = 0
+    const ua = (headers['user-agent'] || '').slice(0, 80)
     try {
       channel = this.relayWsOpen(machineId, restPath, headers, {
-        onOpen: () => {},
+        onOpen: () => {
+          console.log(`[console-ws] upstream open channel=${channel} machine=${machineId} path=${restPath} at=${new Date().toISOString()}`)
+        },
         onData: (kind, data) => {
+          downBytes += data.length
           if (bws.readyState === WebSocket.OPEN) bws.send(data, { binary: kind === DataKind.BINARY })
         },
         onClose: (code) => {
@@ -274,16 +280,26 @@ export class NodeRegistry {
           }
         },
       })
-    } catch {
+      console.log(`[console-ws] relay open channel=${channel} machine=${machineId} path=${restPath} ua=${ua} at=${new Date().toISOString()}`)
+    } catch (e) {
+      console.log(
+        `[console-ws] relay open FAILED machine=${machineId} path=${restPath} ua=${ua} err=${(e as Error).message ?? String(e)} at=${new Date().toISOString()}`,
+      )
       bws.close(1011)
       return
     }
 
     bws.on('message', (data, isBinary) => {
       const d = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer)
+      upBytes += d.length
       this.sendWs(channel, isBinary ? DataKind.BINARY : DataKind.TEXT, d)
     })
-    bws.on('close', () => this.closeWsChannel(channel))
+    bws.on('close', (code) => {
+      console.log(
+        `[console-ws] relay close channel=${channel} machine=${machineId} code=${code} up=${upBytes}B down=${downBytes}B at=${new Date().toISOString()}`,
+      )
+      this.closeWsChannel(channel)
+    })
   }
 
   private relayWsOpen(machineId: string, path: string, headers: Record<string, string>, handler: WsChannelHandler): number {

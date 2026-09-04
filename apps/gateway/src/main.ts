@@ -104,26 +104,38 @@ if (existsSync(webDist)) {
 const wss = new WebSocketServer({ noServer: true })
 
 async function handleBrowserUpgrade(req: any, socket: any, head: Buffer): Promise<void> {
+  const ua = String(req.headers['user-agent'] ?? '').slice(0, 80)
   const u = new URL(req.url ?? '/', 'http://console')
   const isConsole = u.pathname.startsWith('/console/')
   let machineId: string | undefined
   let upstreamPath: string
   if (isConsole) {
     const segs = u.pathname.split('/').filter(Boolean) // ['console', machineId, ...]
-    if (segs.length < 2) return socket.destroy()
+    if (segs.length < 2) {
+      console.log(`[console-ws] upgrade rejected bad path=${u.pathname} ua=${ua} at=${new Date().toISOString()}`)
+      return socket.destroy()
+    }
     machineId = segs[1]
     upstreamPath = '/' + segs.slice(2).join('/') + u.search
   } else {
     machineId = registry.singleNodeId()
     upstreamPath = u.pathname + u.search
   }
-  if (!machineId) return socket.destroy()
+  if (!machineId) {
+    console.log(`[console-ws] upgrade rejected no machine path=${u.pathname} ua=${ua} at=${new Date().toISOString()}`)
+    return socket.destroy()
+  }
 
   const token = getCookie(req.headers.cookie, SESSION_COOKIE)
   const session = token ? auth.sessions.get(token) : undefined
   const user = session ? await store.getUser(session.userId) : undefined
   const res = await authorizeConsole(store, user, machineId)
-  if (!res.allowed) return socket.destroy()
+  if (!res.allowed) {
+    console.log(
+      `[console-ws] upgrade denied machine=${machineId} path=${u.pathname} ua=${ua} reason=${res.error} at=${new Date().toISOString()}`,
+    )
+    return socket.destroy()
+  }
 
   registry.upgradeBrowserWs(req, socket, head, machineId, upstreamPath)
 }
