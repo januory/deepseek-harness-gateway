@@ -1,0 +1,27 @@
+# Keep the build context small and the image clean. The builder stage re-creates
+# node_modules + dist from source inside the container (Linux-native binaries).
+
+.git
+.gitignore
+.github
+docs
+.dsh
+
+node_modules
+**/node_modules
+
+dist
+**/dist
+
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+*.db-journal
+
+logs
+*.log
+
+.env
+.env.*

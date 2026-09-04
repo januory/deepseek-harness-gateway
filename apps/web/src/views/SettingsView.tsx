@@ -55,8 +55,9 @@ export function SettingsView({ me }: { me: PublicUser }) {
   }
 
   const head = info?.head
+  const hasGit = info?.git !== false
   const behind = check?.behind ?? 0
-  const canUpdate = isSystemAdmin && behind > 0 && !(info?.dirty ?? false) && !updating
+  const canUpdate = isSystemAdmin && hasGit && behind > 0 && !(info?.dirty ?? false) && !updating
 
   return (
     <>
@@ -71,6 +72,8 @@ export function SettingsView({ me }: { me: PublicUser }) {
       <Card title="版本信息">
         {info === null ? (
           <Spinner />
+        ) : !info.git ? (
+          <Empty>镜像内未打包 git 仓库（未指定源码路径），不可热更新</Empty>
         ) : (
           <dl className="kv">
             <dt>仓库</dt>
@@ -109,12 +112,16 @@ export function SettingsView({ me }: { me: PublicUser }) {
       <Card
         title="更新"
         actions={
-          <Button variant="primary" disabled={checking} onClick={() => void doCheck()}>
+          <Button variant="primary" disabled={checking || !hasGit} onClick={() => void doCheck()}>
             {checking ? '检查中…' : '检查更新'}
           </Button>
         }
       >
-        {check === null ? (
+        {!hasGit ? (
+          <p className="muted" style={{ margin: 0 }}>
+            未指定源码仓库（GIT_REPO），容器使用镜像内打包的源码运行，无法热更新。
+          </p>
+        ) : check === null ? (
           <p className="muted" style={{ margin: 0 }}>
             点击「检查更新」从 git 远程获取最新提交，查看可更新数量。
           </p>

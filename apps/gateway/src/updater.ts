@@ -9,7 +9,7 @@
 // reload). When running compiled JS (`node dist/main.js`) we re-exec the same entry
 // as a detached child and exit, relying on that self-spawn as the supervisor.
 
-import { execFile, spawn } from 'node:child_process'
+import { exec, execFile, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -29,6 +29,8 @@ export interface CommitInfo {
 }
 
 export interface VersionInfo {
+  /** false when the process is not inside a git checkout (e.g. baked Docker image without a source repo). */
+  git: boolean
   repo: string
   branch: string
   remote: string | null
@@ -127,7 +129,7 @@ async function getVersionInfo(repo: string): Promise<VersionInfo> {
     dirty = false
   }
 
-  return { repo, branch, remote, dirty, head }
+  return { git: true, repo, branch, remote, dirty, head }
 }
 
 async function checkForUpdates(repo: string): Promise<UpdateStatus> {
@@ -191,6 +193,20 @@ async function applyUpdate(repo: string): Promise<{ from: string; to: string; pu
   return { from: before, to: after, pulled }
 }
 
+/** Run an operator-configured build command after a successful pull (e.g. `pnpm -r build` in the container). */
+function runBuildCommand(repo: string, cmd: string, timeoutMs = 300_000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    exec(cmd, { cwd: repo, timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
+      if (err) {
+        const msg = (stderr || stdout || '').trim() || (err as Error).message
+        reject(new Error('build failed: ' + msg))
+        return
+      }
+      resolve()
+    })
+  })
+}
+
 /** `watch` when tsx runs our .ts entry (it reloads on file change); `restart` for compiled JS. */
 function reloadStrategy(): 'watch' | 'restart' {
   return (process.argv[1] ?? '').endsWith('.ts') ? 'watch' : 'restart'
@@ -220,7 +236,13 @@ export async function registerUpdater(app: FastifyInstance, auth: Auth, store: I
   const log: GitLog = app.log
 
   app.get('/gw/version', { preHandler: requireRole(...ADMIN_ROLES) }, async () => {
-    return getVersionInfo(await findRepoRoot())
+    try {
+      return await getVersionInfo(await findRepoRoot())
+    } catch {
+      // Not a git checkout (e.g. baked Docker image without a source repo) — report
+      // gracefully so the settings page can disable hot-update instead of erroring.
+      return { git: false, repo: '', branch: '', remote: null, dirty: false, head: null } satisfies VersionInfo
+    }
   })
 
   app.post('/gw/version/check', { preHandler: requireRole(...ADMIN_ROLES) }, async (_req, reply) => {
@@ -235,6 +257,13 @@ export async function registerUpdater(app: FastifyInstance, auth: Auth, store: I
     try {
       const repo = await findRepoRoot()
       const res = await applyUpdate(repo)
+
+      const buildCmd = process.env.GATEWAY_BUILD_CMD
+      if (buildCmd) {
+        log.info('[updater] running build command: ' + buildCmd)
+        await runBuildCommand(repo, buildCmd)
+      }
+
       const reload = reloadStrategy()
 
       if (reload === 'restart') {

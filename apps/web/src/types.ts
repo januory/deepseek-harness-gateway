@@ -65,6 +65,8 @@ export interface CommitInfo {
 }
 
 export interface VersionInfo {
+  /** false when not inside a git checkout (baked Docker image without a source repo). */
+  git: boolean
   repo: string
   branch: string
   remote: string | null
