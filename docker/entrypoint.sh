@@ -15,7 +15,8 @@ if [ -d "$SRC_DIR/.git" ]; then
   echo "[gateway] source dir is a git repo ($SRC_DIR) → hot-update enabled"
   cd "$SRC_DIR"
   echo "[gateway] installing dependencies…"
-  pnpm install --frozen-lockfile
+  # Keep pnpm's store out of the source tree so the checkout stays clean.
+  pnpm install --frozen-lockfile --store-dir "${DSH_GATEWAY_PNPM_STORE:-/data/pnpm-store}"
   echo "[gateway] building…"
   pnpm -r build
 else

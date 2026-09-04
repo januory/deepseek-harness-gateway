@@ -172,11 +172,17 @@ async function checkForUpdates(repo: string): Promise<UpdateStatus> {
 }
 
 async function applyUpdate(repo: string): Promise<{ from: string; to: string; pulled: CommitInfo[] }> {
-  const info = await getVersionInfo(repo)
-  if (info.dirty) throw new Error('working tree has uncommitted changes — commit or stash first')
-
   const before = (await runGit(repo, ['rev-parse', 'HEAD'])).trim()
-  const branch = info.branch || 'main'
+
+  // No pre-flight dirty check: just attempt the fast-forward pull. `git pull
+  // --ff-only` already fails safely when there is a real conflict, and untracked
+  // files (e.g. a pnpm store) don't block it — surface the error only on failure.
+  let branch = 'main'
+  try {
+    branch = (await runGit(repo, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim() || 'main'
+  } catch {
+    /* keep default */
+  }
 
   await runGit(repo, ['pull', '--ff-only', 'origin', branch], 120_000)
 

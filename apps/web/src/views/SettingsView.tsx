@@ -57,7 +57,7 @@ export function SettingsView({ me }: { me: PublicUser }) {
   const head = info?.head
   const hasGit = info?.git !== false
   const behind = check?.behind ?? 0
-  const canUpdate = isSystemAdmin && hasGit && behind > 0 && !(info?.dirty ?? false) && !updating
+  const canUpdate = isSystemAdmin && hasGit && behind > 0 && !updating
 
   return (
     <>
@@ -137,7 +137,6 @@ export function SettingsView({ me }: { me: PublicUser }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
               <span className="badge badge--amber">有 {behind} 个提交可以更新</span>
               {check.ahead > 0 ? <span className="muted">本地还领先 {check.ahead} 个提交</span> : null}
-              {info?.dirty ? <span className="badge badge--red">工作区有改动，无法安全更新</span> : null}
             </div>
 
             {check.incoming.length === 0 ? (
