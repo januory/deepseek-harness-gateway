@@ -44,19 +44,17 @@ export interface RelayRequest {
   body?: Buffer
 }
 
-export interface RelayResponse {
-  status: number
-  headers: Record<string, string>
-  body: Buffer
+export interface RelayStreamHandlers {
+  onResponse(status: number, headers: Record<string, string>): void
+  onData(chunk: Buffer): void
+  onEnd(): void
+  onError(err: Error): void
 }
 
-interface PendingRelay {
-  status?: number
-  headers?: Record<string, string>
-  chunks: Buffer[]
-  resolve: (r: RelayResponse) => void
-  reject: (e: Error) => void
-  timer: NodeJS.Timeout
+interface RelayStreamState {
+  handlers: RelayStreamHandlers
+  arm: () => void
+  clear: () => void
 }
 
 interface WsChannelHandler {
@@ -65,12 +63,15 @@ interface WsChannelHandler {
   onClose(code: number): void
 }
 
-const RELAY_TIMEOUT_MS = 15_000
+// Idle timeout for a relayed HTTP response: how long the gateway waits for the
+// next response chunk before giving up. Generous on purpose — slow machine-side
+// queries (e.g. a big session/list) and long-lived SSE streams must survive.
+const RELAY_TIMEOUT_MS = Number(process.env.DSH_GATEWAY_RELAY_TIMEOUT_MS ?? 60_000)
 const WS_DROP_HEADERS = new Set(['host', 'connection', 'upgrade', 'origin', 'sec-websocket-key', 'sec-websocket-version', 'sec-websocket-extensions'])
 
 export class NodeRegistry {
   private nodes = new Map<string, ConnectedNode>()
-  private pending = new Map<number, PendingRelay>()
+  private streams = new Map<number, RelayStreamState>()
   private wsChannels = new Map<number, WsChannelHandler>()
   private wsChannelNode = new Map<number, string>()
   private browserWss = new WebSocketServer({ noServer: true })
@@ -103,11 +104,11 @@ export class NodeRegistry {
     if (this.timer) clearInterval(this.timer)
     for (const node of this.nodes.values()) node.ws.close(4000, 'shutdown')
     this.nodes.clear()
-    for (const p of this.pending.values()) {
-      clearTimeout(p.timer)
-      p.reject(new Error('shutdown'))
+    for (const s of this.streams.values()) {
+      s.clear()
+      s.handlers.onError(new Error('shutdown'))
     }
-    this.pending.clear()
+    this.streams.clear()
     this.wsChannels.clear()
     this.wsChannelNode.clear()
   }
@@ -177,11 +178,17 @@ export class NodeRegistry {
     await this.store.appendAudit({ ts: new Date().toISOString(), actor: 'admin', machineId, action: 'delete_machine', result: 'ok' })
   }
 
-  /** Relay an HTTP request to a connected, approved node and await the response. */
-  relay(machineId: string, req: RelayRequest): Promise<RelayResponse> {
+  /** Relay an HTTP request to a connected, approved node and stream the response. */
+  relayStream(machineId: string, req: RelayRequest, handlers: RelayStreamHandlers): void {
     const node = this.nodes.get(machineId)
-    if (!node) return Promise.reject(new Error('node not connected'))
-    if (node.status !== 'approved') return Promise.reject(new Error('node not approved'))
+    if (!node) {
+      handlers.onError(new Error('node not connected'))
+      return
+    }
+    if (node.status !== 'approved') {
+      handlers.onError(new Error('node not approved'))
+      return
+    }
 
     const channel = ++this.channelSeq
     node.ws.send(
@@ -201,13 +208,22 @@ export class NodeRegistry {
       node.ws.send(encodeBinaryFrame(channel, 0, req.body))
     }
 
-    return new Promise<RelayResponse>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(channel)
-        reject(new Error('relay timeout'))
+    let timer: NodeJS.Timeout | undefined
+    const clear = () => {
+      if (timer) {
+        clearTimeout(timer)
+        timer = undefined
+      }
+    }
+    const arm = () => {
+      clear()
+      timer = setTimeout(() => {
+        this.streams.delete(channel)
+        handlers.onError(new Error('relay timeout'))
       }, RELAY_TIMEOUT_MS)
-      this.pending.set(channel, { chunks: [], resolve, reject, timer })
-    })
+    }
+    this.streams.set(channel, { handlers, arm, clear })
+    arm()
   }
 
   /** Machine id when exactly one APPROVED node is connected (single-node passthrough). */
@@ -341,20 +357,20 @@ export class NodeRegistry {
       }
 
       if (msg.type === DataType.RELAY_RESPONSE) {
-        const p = this.pending.get(msg.payload?.channel)
-        if (p) {
-          p.status = msg.payload?.status
-          p.headers = msg.payload?.headers
+        const s = this.streams.get(msg.payload?.channel)
+        if (s) {
+          s.arm()
+          s.handlers.onResponse(msg.payload?.status ?? 502, msg.payload?.headers ?? {})
         }
         return
       }
 
       if (msg.type === DataType.RELAY_END) {
-        const p = this.pending.get(msg.payload?.channel)
-        if (p) {
-          clearTimeout(p.timer)
-          this.pending.delete(msg.payload.channel)
-          p.resolve({ status: p.status ?? 502, headers: p.headers ?? {}, body: Buffer.concat(p.chunks) })
+        const s = this.streams.get(msg.payload?.channel)
+        if (s) {
+          s.clear()
+          this.streams.delete(msg.payload.channel)
+          s.handlers.onEnd()
         }
         return
       }
@@ -379,8 +395,11 @@ export class NodeRegistry {
   }
 
   private handleDataFrame(channel: number, data: Buffer): void {
-    const p = this.pending.get(channel)
-    if (p) p.chunks.push(data)
+    const s = this.streams.get(channel)
+    if (s) {
+      s.arm()
+      s.handlers.onData(data)
+    }
   }
 
   /** Persist durable health metadata on each heartbeat (accurate "last seen" + version). */

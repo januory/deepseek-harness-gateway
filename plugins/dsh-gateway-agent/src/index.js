@@ -337,6 +337,10 @@ class Connection {
     const cookie = this.effectiveCookie()
     if (cookie) reqHeaders.cookie = cookie
 
+    const send = (obj) => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj))
+    }
+
     const ureq = http.request(
       { host: '127.0.0.1', port: this.dshPort, method, path, headers: reqHeaders },
       (res) => {
@@ -358,27 +362,24 @@ class Connection {
         if (res.statusCode && res.statusCode >= 400) {
           console.log('[dsh-gateway-agent] upstream', res.statusCode, method, path, 'cookie=', cookie ? cookie.slice(0, 24) : 'MISSING', 'dshPort=', this.dshPort)
         }
-        const chunks = []
-        res.on('data', (c) => chunks.push(c))
+
+        // Send the response headers immediately, then stream body chunks as they
+        // arrive (no buffering — this keeps long-lived SSE and slow queries alive).
+        send({ v: PROTOCOL_VERSION, type: DataType.RELAY_RESPONSE, payload: { channel, status: res.statusCode, headers: res.headers } })
+        res.on('data', (c) => {
+          if (ws.readyState === WebSocket.OPEN) ws.send(encodeBinaryFrame(channel, 0, c))
+        })
         res.on('end', () => {
-          const resBody = Buffer.concat(chunks)
-          ws.send(
-            JSON.stringify({
-              v: PROTOCOL_VERSION,
-              type: DataType.RELAY_RESPONSE,
-              payload: { channel, status: res.statusCode, headers: res.headers },
-            }),
-          )
-          if (resBody.length > 0) ws.send(encodeBinaryFrame(channel, 0, resBody))
-          ws.send(JSON.stringify({ v: PROTOCOL_VERSION, type: DataType.RELAY_END, payload: { channel } }))
+          send({ v: PROTOCOL_VERSION, type: DataType.RELAY_END, payload: { channel } })
+        })
+        res.on('error', () => {
+          send({ v: PROTOCOL_VERSION, type: DataType.RELAY_END, payload: { channel } })
         })
       },
     )
-    ureq.on('error', (e) => {
-      ws.send(
-        JSON.stringify({ v: PROTOCOL_VERSION, type: DataType.RELAY_RESPONSE, payload: { channel, status: 502, headers: {} } }),
-      )
-      ws.send(JSON.stringify({ v: PROTOCOL_VERSION, type: DataType.RELAY_END, payload: { channel } }))
+    ureq.on('error', () => {
+      send({ v: PROTOCOL_VERSION, type: DataType.RELAY_RESPONSE, payload: { channel, status: 502, headers: {} } })
+      send({ v: PROTOCOL_VERSION, type: DataType.RELAY_END, payload: { channel } })
     })
     ureq.end(body)
   }

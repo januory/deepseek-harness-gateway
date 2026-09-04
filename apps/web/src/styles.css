@@ -722,6 +722,8 @@ h3 {
 
   .main--console {
     padding: 0;
+    height: 100vh;
+    height: 100dvh;
   }
 
   .main__inner {

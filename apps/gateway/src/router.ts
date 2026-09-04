@@ -33,13 +33,13 @@ function queryString(req: FastifyRequest): string {
   return req.raw.url?.includes('?') ? req.raw.url.slice(req.raw.url.indexOf('?')) : ''
 }
 
-export async function relayHttp(
+export function relayHttp(
   registry: NodeRegistry,
   machineId: string,
   req: FastifyRequest,
   reply: FastifyReply,
   upstreamPath: string,
-): Promise<void> {
+): void {
   const headers: Record<string, string> = {}
   for (const [k, v] of Object.entries(req.headers)) {
     if (v === undefined || DROP_HEADERS.has(k.toLowerCase())) continue
@@ -48,13 +48,45 @@ export async function relayHttp(
 
   const body = Buffer.isBuffer(req.body) ? (req.body as Buffer) : undefined
 
+  // Stream the relayed response through the raw socket (a buffered relay can't
+  // carry long-lived SSE or slow machine-side queries). Fail-closed on error.
+  reply.hijack()
+  const raw = reply.raw
+
+  const fail = (e: unknown) => {
+    if (raw.headersSent) {
+      // Headers already streamed — just close; the client sees a truncated body.
+      raw.end()
+      return
+    }
+    raw.writeHead(502, { 'content-type': 'application/json' })
+    raw.end(JSON.stringify({ error: 'relay failed', detail: String((e as Error)?.message ?? e) }))
+  }
+
   try {
-    const res = await registry.relay(machineId, { method: req.method, path: upstreamPath, headers, body })
-    const out = { ...res.headers }
-    for (const k of ['content-length', 'transfer-encoding', 'connection']) delete out[k]
-    reply.code(res.status).headers(out).send(res.body)
+    registry.relayStream(
+      machineId,
+      { method: req.method, path: upstreamPath, headers, body },
+      {
+        onResponse: (status, resHeaders) => {
+          const out = { ...resHeaders }
+          for (const k of ['content-length', 'transfer-encoding', 'connection']) delete out[k]
+          raw.writeHead(status, out)
+        },
+        onData: (chunk) => {
+          raw.write(chunk)
+        },
+        onEnd: () => {
+          if (!raw.headersSent) raw.writeHead(200, { 'content-type': 'application/json' })
+          raw.end()
+        },
+        onError: (err) => {
+          fail(err)
+        },
+      },
+    )
   } catch (e) {
-    reply.code(502).send({ error: 'relay failed', detail: String(e) })
+    fail(e)
   }
 }
 
