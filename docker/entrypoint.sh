@@ -4,16 +4,18 @@ set -eu
 # deepseek-harness-gateway container entrypoint.
 #
 # Two modes:
-#   baked (default) — no DSH_GATEWAY_GIT_REPO set. Run the source bundled into the
-#                     image. It has no .git, so hot-update is disabled.
-#   git — DSH_GATEWAY_GIT_REPO set. Clone/pull that repo into DSH_GATEWAY_SRC_DIR
-#         at startup so the running checkout has a git remote and hot-update works.
+#   git (default) — DSH_GATEWAY_GIT_REPO defaults to this project's repo; clone or
+#                   pull it into DSH_GATEWAY_SRC_DIR, install, build and run. The
+#                   running checkout has a git remote, so hot-update works.
+#   baked — DSH_GATEWAY_GIT_REPO set to empty ("") runs the source bundled into the
+#           image; it has no .git, so hot-update is disabled.
 
-SRC_DIR="${DSH_GATEWAY_SRC_DIR:-/app/source}"
+GIT_REPO="${DSH_GATEWAY_GIT_REPO:-https://github.com/januory/deepseek-harness-gateway.git}"
 GIT_REF="${DSH_GATEWAY_GIT_REF:-main}"
+SRC_DIR="${DSH_GATEWAY_SRC_DIR:-/app/source}"
 
-if [ -n "${DSH_GATEWAY_GIT_REPO:-}" ]; then
-  echo "[gateway] git mode: repo=$DSH_GATEWAY_GIT_REPO ref=$GIT_REF dir=$SRC_DIR"
+if [ -n "$GIT_REPO" ]; then
+  echo "[gateway] git mode: repo=$GIT_REPO ref=$GIT_REF dir=$SRC_DIR"
   if [ -d "$SRC_DIR/.git" ]; then
     echo "[gateway] updating existing checkout…"
     git -C "$SRC_DIR" fetch --tags origin "$GIT_REF"
@@ -25,7 +27,7 @@ if [ -n "${DSH_GATEWAY_GIT_REPO:-}" ]; then
   else
     echo "[gateway] cloning…"
     rm -rf "$SRC_DIR"
-    git clone --branch "$GIT_REF" "$DSH_GATEWAY_GIT_REPO" "$SRC_DIR"
+    git clone --branch "$GIT_REF" "$GIT_REPO" "$SRC_DIR"
   fi
 
   cd "$SRC_DIR"
@@ -34,7 +36,11 @@ if [ -n "${DSH_GATEWAY_GIT_REPO:-}" ]; then
   echo "[gateway] building…"
   pnpm -r build
 else
-  echo "[gateway] baked mode: using source bundled into the image (no DSH_GATEWAY_GIT_REPO → hot-update disabled)"
+  echo "[gateway] baked mode: using source bundled into the image (DSH_GATEWAY_GIT_REPO empty → hot-update disabled)"
+  if [ ! -d "$SRC_DIR" ] || [ -z "$(ls -A "$SRC_DIR" 2>/dev/null)" ]; then
+    echo "[gateway] error: no source at $SRC_DIR — set DSH_GATEWAY_GIT_REPO or mount a source volume" >&2
+    exit 1
+  fi
   cd "$SRC_DIR"
 fi
 

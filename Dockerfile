@@ -2,14 +2,12 @@
 
 # deepseek-harness-gateway — thin runtime shell.
 #
-# Default (no DSH_GATEWAY_GIT_REPO env): the source baked into the image at build
-# time is built and run directly. It carries no .git, so the portal's "设置 → 更新"
-# hot-update is disabled (the API reports git: false).
+# Default: the entrypoint clones/pulls DSH_GATEWAY_GIT_REPO (defaults to this
+# project's repo below) into DSH_GATEWAY_SRC_DIR, installs deps, builds and runs —
+# the container is a git checkout, so the portal's "设置 → 更新" hot-update works.
 #
-# Opt-in hot-update: set DSH_GATEWAY_GIT_REPO (plus optional DSH_GATEWAY_GIT_REF /
-# DSH_GATEWAY_SRC_DIR) and the entrypoint clones/pulls that repo into
-# DSH_GATEWAY_SRC_DIR at startup — the container then has a git checkout, so the
-# existing `git pull`-based hot-update works.
+# Baked fallback: set DSH_GATEWAY_GIT_REPO="" (empty) to run the source bundled
+# into the image instead — no .git, so hot-update is disabled (git: false).
 
 # ---- builder: install deps + build the baked source (produces Linux node_modules + dist) ----
 FROM node:22-bookworm-slim AS builder
@@ -36,6 +34,7 @@ RUN chmod +x /usr/local/bin/gateway-entrypoint.sh && mkdir -p /data
 
 # DSH_GATEWAY_HOST must be 0.0.0.0 so the port is reachable from outside the container.
 ENV DSH_GATEWAY_SRC_DIR=/app/source \
+    DSH_GATEWAY_GIT_REPO=https://github.com/januory/deepseek-harness-gateway.git \
     DSH_GATEWAY_GIT_REF=main \
     DSH_GATEWAY_HOST=0.0.0.0 \
     DSH_GATEWAY_PORT=3300 \
