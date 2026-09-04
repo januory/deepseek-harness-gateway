@@ -82,7 +82,7 @@ dsh plugin --profile web add ./plugins/dsh-gateway-agent
 1. Start the gateway (`pnpm --filter dsh-gateway-server dev`) and, optionally, build the portal (`pnpm --filter dsh-gateway-web build`) so it is served at the gateway root.
 2. Issue a pairing code to onboard:
    ```sh
-   GATEWAY_PAIRING_CODES="<code>" pnpm --filter dsh-gateway-server dev
+   DSH_GATEWAY_PAIRING_CODES="<code>" pnpm --filter dsh-gateway-server dev
    ```
 3. On the customer machine, install the agent plugin (see Installation), then open the dsh **Settings → 网关接入** section, enter the gateway address (`wss://<gateway-host>`, path not required) and the pairing code, and click **发起入网申请**.
 4. Approve the machine at the gateway, assign it to a user, and open it from the portal — reads and interactions are relayed to that machine's dsh WebUI in real time.

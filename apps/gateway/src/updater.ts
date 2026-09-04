@@ -258,7 +258,7 @@ export async function registerUpdater(app: FastifyInstance, auth: Auth, store: I
       const repo = await findRepoRoot()
       const res = await applyUpdate(repo)
 
-      const buildCmd = process.env.GATEWAY_BUILD_CMD
+      const buildCmd = process.env.DSH_GATEWAY_BUILD_CMD
       if (buildCmd) {
         log.info('[updater] running build command: ' + buildCmd)
         await runBuildCommand(repo, buildCmd)

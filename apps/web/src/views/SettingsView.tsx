@@ -119,7 +119,7 @@ export function SettingsView({ me }: { me: PublicUser }) {
       >
         {!hasGit ? (
           <p className="muted" style={{ margin: 0 }}>
-            未指定源码仓库（GIT_REPO），容器使用镜像内打包的源码运行，无法热更新。
+            未指定源码仓库（DSH_GATEWAY_GIT_REPO），容器使用镜像内打包的源码运行，无法热更新。
           </p>
         ) : check === null ? (
           <p className="muted" style={{ margin: 0 }}>

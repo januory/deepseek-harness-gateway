@@ -82,7 +82,7 @@ dsh plugin --profile web add ./plugins/dsh-gateway-agent
 1. 启动网关（`pnpm --filter dsh-gateway-server dev`），并可按需构建门户（`pnpm --filter dsh-gateway-web build`），使其由网关根路径托管。
 2. 签发配对码：
    ```sh
-   GATEWAY_PAIRING_CODES="<code>" pnpm --filter dsh-gateway-server dev
+   DSH_GATEWAY_PAIRING_CODES="<code>" pnpm --filter dsh-gateway-server dev
    ```
 3. 在客户机上装好接入插件（见"安装"），打开 dsh 的 **设置 → 网关接入**，填入网关地址（`wss://<网关主机>`，不含路径）与配对码，点 **发起入网申请**。
 4. 在网关侧审批该机器、分配给用户，然后从门户打开——读取与交互会实时中继到该机器的 dsh WebUI。

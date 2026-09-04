@@ -3,18 +3,18 @@
 // Flow: onboard with pairing code → pending + node key → admin approve via /gw
 // → reconnect with node key → approved + lease → HTTP relay round-trip.
 //
-// Usage: CODE=testcode node scripts/onboard-e2e.mjs
-//   (gateway running with GATEWAY_PAIRING_CODES="testcode:default")
+// Usage: DSH_GATEWAY_CODE=testcode node scripts/onboard-e2e.mjs
+//   (gateway running with DSH_GATEWAY_PAIRING_CODES="testcode:default")
 
 import http from 'node:http'
 import WebSocket from 'ws'
 import { encodeFrame, DataKind } from 'dsh-gateway-protocol'
 
-const gatewayWs = process.env.GATEWAY_URL ?? 'ws://127.0.0.1:3300/agent'
-const gatewayHttp = process.env.GATEWAY_HTTP ?? 'http://127.0.0.1:3300'
-const code = process.env.CODE ?? 'testcode'
-const adminId = process.env.ADMIN_ID ?? 'admin'
-const adminPassword = process.env.ADMIN_PASSWORD ?? 'admin'
+const gatewayWs = process.env.DSH_GATEWAY_URL ?? 'ws://127.0.0.1:3300/agent'
+const gatewayHttp = process.env.DSH_GATEWAY_HTTP ?? 'http://127.0.0.1:3300'
+const code = process.env.DSH_GATEWAY_CODE ?? 'testcode'
+const adminId = process.env.DSH_GATEWAY_ADMIN_ID ?? 'admin'
+const adminPassword = process.env.DSH_GATEWAY_ADMIN_PASSWORD ?? 'admin'
 
 let machineId = null
 let nodeKey = null

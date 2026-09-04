@@ -13,14 +13,14 @@ import { registerControl } from './control.js'
 import { registerUpdater } from './updater.js'
 import { authorizeConsole, getCookie } from './authz.js'
 
-const HOST = process.env.GATEWAY_HOST ?? '127.0.0.1'
-const PORT = Number(process.env.GATEWAY_PORT ?? 3300)
-// Durable SQLite store (ADR-0007). Defaults to ./gateway.db; set GATEWAY_DB_PATH
+const HOST = process.env.DSH_GATEWAY_HOST ?? '127.0.0.1'
+const PORT = Number(process.env.DSH_GATEWAY_PORT ?? 3300)
+// Durable SQLite store (ADR-0007). Defaults to ./gateway.db; set DSH_GATEWAY_DB_PATH
 // to ':memory:' for a throwaway run or to a custom file path.
-const DB_PATH = process.env.GATEWAY_DB_PATH ?? './gateway.db'
+const DB_PATH = process.env.DSH_GATEWAY_DB_PATH ?? './gateway.db'
 // Bootstrap platform admin (created on first run).
-const ADMIN_ID = process.env.GATEWAY_ADMIN_ID ?? 'admin'
-const ADMIN_PASSWORD = process.env.GATEWAY_ADMIN_PASSWORD ?? 'admin'
+const ADMIN_ID = process.env.DSH_GATEWAY_ADMIN_ID ?? 'admin'
+const ADMIN_PASSWORD = process.env.DSH_GATEWAY_ADMIN_PASSWORD ?? 'admin'
 
 const app = Fastify({ logger: true })
 
@@ -29,15 +29,15 @@ await store.open()
 
 // Ensure the bootstrap system admin exists.
 await bootstrap(store, { adminId: ADMIN_ID, adminPassword: ADMIN_PASSWORD })
-if (process.env.GATEWAY_ADMIN_PASSWORD === undefined) {
-  app.log.warn('using default bootstrap admin password ("admin") — set GATEWAY_ADMIN_PASSWORD in production')
+if (process.env.DSH_GATEWAY_ADMIN_PASSWORD === undefined) {
+  app.log.warn('using default bootstrap admin password ("admin") — set DSH_GATEWAY_ADMIN_PASSWORD in production')
 }
 
 const auth = buildAuth()
 const registry = new NodeRegistry(store)
 
-// Seed one-time pairing codes for testing: GATEWAY_PAIRING_CODES="code,code,..."
-for (const code of (process.env.GATEWAY_PAIRING_CODES ?? '').split(',').filter(Boolean)) {
+// Seed one-time pairing codes for testing: DSH_GATEWAY_PAIRING_CODES="code,code,..."
+for (const code of (process.env.DSH_GATEWAY_PAIRING_CODES ?? '').split(',').filter(Boolean)) {
   try {
     await registry.seedPairingCode(code)
   } catch (e) {

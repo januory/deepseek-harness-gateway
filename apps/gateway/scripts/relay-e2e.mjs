@@ -3,18 +3,18 @@
 // pairing code, approves it via the admin API, reconnects with the node key,
 // then exercises /console/<machineId>/... over both transports.
 //
-// Usage: CODE=testcode node scripts/relay-e2e.mjs
-//   (gateway must be running with GATEWAY_PAIRING_CODES="testcode:default")
+// Usage: DSH_GATEWAY_CODE=testcode node scripts/relay-e2e.mjs
+//   (gateway must be running with DSH_GATEWAY_PAIRING_CODES="testcode:default")
 
 import http from 'node:http'
 import WebSocket, { WebSocketServer } from 'ws'
 import { encodeFrame, DataKind, BinaryFrameParser } from 'dsh-gateway-protocol'
 
-const code = process.env.CODE ?? 'testcode'
-const adminId = process.env.ADMIN_ID ?? 'admin'
-const adminPassword = process.env.ADMIN_PASSWORD ?? 'admin'
-const gatewayWs = process.env.GATEWAY_URL ?? 'ws://127.0.0.1:3300/agent'
-const gatewayHttp = process.env.GATEWAY_HTTP ?? 'http://127.0.0.1:3300'
+const code = process.env.DSH_GATEWAY_CODE ?? 'testcode'
+const adminId = process.env.DSH_GATEWAY_ADMIN_ID ?? 'admin'
+const adminPassword = process.env.DSH_GATEWAY_ADMIN_PASSWORD ?? 'admin'
+const gatewayWs = process.env.DSH_GATEWAY_URL ?? 'ws://127.0.0.1:3300/agent'
+const gatewayHttp = process.env.DSH_GATEWAY_HTTP ?? 'http://127.0.0.1:3300'
 const upstreamHttpPort = 3999
 const upstreamWsPort = 3998
 
