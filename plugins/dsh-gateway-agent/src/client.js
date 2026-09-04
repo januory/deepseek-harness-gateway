@@ -3,7 +3,12 @@
 // 以 classic factory 经 window.__ModuleLoader__ 自注册（无 ESM import/export），
 // react 是平台 seed word。提供"网关接入"设置卡：网关地址、入网申请、连接状态。
 // Remote 契约与 src/index.js 逐字镜像（must match）。
+//
+// 重要：本文件作为 classic script 会被拼进同一个 bundle（与 remote-workspaces 等
+// 其它 client 插件并列），顶层 var PACKAGE/NAMESPACE/INVOCATIONS 会互相覆盖——
+// 后加载的插件会改掉这里的值。必须用 IIFE 把顶层声明隔离在私有作用域内。
 
+;(function () {
 var PACKAGE = 'dsh-gateway-agent'
 var NAMESPACE = 'gatewayAgent'
 
@@ -348,3 +353,5 @@ window.__ModuleLoader__.load({
     }
   },
 })
+
+})()
