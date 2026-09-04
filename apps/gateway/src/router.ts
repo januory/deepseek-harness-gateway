@@ -42,6 +42,8 @@ export function relayHttp(
 ): void {
   const started = Date.now()
   const ua = String(req.headers['user-agent'] ?? '').slice(0, 80)
+  const bodyUp = Buffer.isBuffer(req.body) ? (req.body as Buffer).length : 0
+  let downBytes = 0
   console.log(`[relay] ${req.method} ${upstreamPath} machine=${machineId} ua=${ua} at=${new Date().toISOString()}`)
   const headers: Record<string, string> = {}
   for (const [k, v] of Object.entries(req.headers)) {
@@ -58,7 +60,7 @@ export function relayHttp(
 
   const fail = (e: unknown) => {
     console.log(
-      `[relay] ${req.method} ${upstreamPath} machine=${machineId} ERROR ${(e as Error)?.message ?? String(e)} after ${Date.now() - started}ms ua=${ua}`,
+      `[relay] ${req.method} ${upstreamPath} machine=${machineId} ERROR ${(e as Error)?.message ?? String(e)} after ${Date.now() - started}ms up=${bodyUp}B down=${downBytes}B ua=${ua}`,
     )
     if (raw.headersSent) {
       // Headers already streamed — just close; the client sees a truncated body.
@@ -83,11 +85,12 @@ export function relayHttp(
           raw.writeHead(status, out)
         },
         onData: (chunk) => {
+          downBytes += chunk.length
           raw.write(chunk)
         },
         onEnd: () => {
           console.log(
-            `[relay] ${req.method} ${upstreamPath} machine=${machineId} END after ${Date.now() - started}ms ua=${ua}`,
+            `[relay] ${req.method} ${upstreamPath} machine=${machineId} END after ${Date.now() - started}ms up=${bodyUp}B down=${downBytes}B ua=${ua}`,
           )
           if (!raw.headersSent) raw.writeHead(200, { 'content-type': 'application/json' })
           raw.end()
