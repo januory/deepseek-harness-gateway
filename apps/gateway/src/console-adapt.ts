@@ -188,6 +188,19 @@ const ADAPT_JS = `
     window.setInterval(tick, 600)
     window.addEventListener('orientationchange', tick)
     window.addEventListener('resize', tick)
+    // Opening a session from the expanded sidebar must fold the sidebar back so
+    // the conversation gets the full phone width (the expanded 280px sidebar
+    // would otherwise squeeze the center to ~110px on a 390px phone).
+    document.addEventListener('click', function (e) {
+      if (!document.body.classList.contains(ACTIVE)) return
+      var frame = document.querySelector('[class$="_frame"]')
+      if (!frame || frame.hasAttribute('data-sidebar-collapsed')) return
+      var t = e.target
+      if (!(t instanceof Element)) return
+      if (t.closest('[class$="_sessionRow"]') !== null || t.closest('[class$="_newSession"]') !== null) {
+        window.setTimeout(toggleSidebar, 120)
+      }
+    }, true)
   }
 
   if (document.readyState === 'loading') {
