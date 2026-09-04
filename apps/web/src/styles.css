@@ -212,6 +212,7 @@ h3 {
 
 .card__body--flush {
   padding: 0;
+  overflow-x: auto;
 }
 
 /* ---- form ------------------------------------------------------------------------ */
@@ -397,6 +398,7 @@ h3 {
 
 .table {
   width: 100%;
+  min-width: 560px;
   border-collapse: collapse;
 }
 
@@ -636,4 +638,126 @@ h3 {
   width: 100%;
   border: none;
   background: #fff;
+}
+
+/* ---- mobile nav controls (hidden on desktop) ---------------------------------- */
+
+.sidebar__close,
+.hamburger {
+  display: none;
+}
+
+/* ---- responsive / mobile ------------------------------------------------------- */
+
+@media (max-width: 768px) {
+  .shell {
+    display: block;
+  }
+
+  /* off-canvas sidebar drawer */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 240px;
+    flex: none;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    z-index: 60;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.45);
+  }
+
+  .sidebar--open {
+    transform: translateX(0);
+  }
+
+  .sidebar__close {
+    display: block;
+    position: absolute;
+    top: 14px;
+    right: 12px;
+    background: transparent;
+    border: none;
+    color: #9ca3af;
+    font-size: 16px;
+    line-height: 1;
+    padding: 4px;
+    cursor: pointer;
+  }
+
+  .sidebar__close:hover {
+    color: #fff;
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(17, 24, 39, 0.45);
+    z-index: 55;
+  }
+
+  /* fixed hamburger button */
+  .hamburger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 50;
+    width: 38px;
+    height: 38px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    font-size: 18px;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+  }
+
+  .main {
+    padding: 56px 14px 22px;
+  }
+
+  .main--console {
+    padding: 0;
+  }
+
+  .main__inner {
+    gap: 14px;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .page-header__actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .kv {
+    grid-template-columns: 1fr;
+    gap: 2px 0;
+  }
+
+  .kv dt {
+    margin-top: 10px;
+  }
+
+  .console__bar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .console__actions {
+    flex-wrap: wrap;
+  }
 }

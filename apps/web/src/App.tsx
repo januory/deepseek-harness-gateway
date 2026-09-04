@@ -31,6 +31,7 @@ const NAV: NavItem[] = [
 function Shell({ me, onLogout }: { me: PublicUser; onLogout: () => void }) {
   const [view, setView] = useState<ViewKey>('machines')
   const [consoleMachine, setConsoleMachine] = useState<MachineView | null>(null)
+  const [navOpen, setNavOpen] = useState(false)
 
   const items = NAV.filter((n) => n.visible(me))
   const active = items.some((n) => n.key === view) ? view : items[0].key
@@ -38,15 +39,20 @@ function Shell({ me, onLogout }: { me: PublicUser; onLogout: () => void }) {
   function selectNav(key: ViewKey) {
     setConsoleMachine(null)
     setView(key)
+    setNavOpen(false)
   }
 
   return (
     <div className="shell">
-      <aside className="sidebar">
+      {navOpen ? <div className="sidebar-backdrop" onClick={() => setNavOpen(false)} /> : null}
+      <aside className={`sidebar ${navOpen ? 'sidebar--open' : ''}`}>
         <div className="sidebar__brand">
           dsh-gateway
           <small>受管网关路由器</small>
         </div>
+        <button className="sidebar__close" aria-label="关闭菜单" onClick={() => setNavOpen(false)}>
+          ✕
+        </button>
         <nav>
           {items.map((n) => (
             <button
@@ -73,6 +79,11 @@ function Shell({ me, onLogout }: { me: PublicUser; onLogout: () => void }) {
         </div>
       </aside>
       <main className={`main ${consoleMachine ? 'main--console' : ''}`}>
+        {!consoleMachine ? (
+          <button className="hamburger" aria-label="打开菜单" onClick={() => setNavOpen(true)}>
+            ☰
+          </button>
+        ) : null}
         {consoleMachine ? (
           <ConsoleView machine={consoleMachine} onBack={() => setConsoleMachine(null)} />
         ) : (
