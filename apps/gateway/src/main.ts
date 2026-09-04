@@ -74,7 +74,11 @@ app.get('/nodes', async () => ({ nodes: await registry.listNodes() }))
 const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url))
 if (existsSync(webDist)) {
   const indexHtml = join(webDist, 'index.html')
-  app.get('/', async (_req, reply) => reply.type('text/html').send(readFileSync(indexHtml)))
+  // The SPA shell must always be fresh so a hot-updated build (new hashed
+  // assets) is picked up immediately instead of a stale cached copy.
+  app.get('/', async (_req, reply) =>
+    reply.type('text/html').header('Cache-Control', 'no-store').send(readFileSync(indexHtml)),
+  )
   await app.register(fastifyStatic, { root: webDist, prefix: '/portal/' })
 } else {
   app.log.warn('apps/web/dist not built — portal static hosting disabled')

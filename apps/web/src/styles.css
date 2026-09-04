@@ -28,11 +28,16 @@ body,
   margin: 0;
 }
 
-/* Never let the page pan horizontally on touch devices (iOS rubber-banding). */
+/* Never let the page pan horizontally on touch devices (iOS rubber-banding).
+   `clip` (where supported) is stricter than `hidden`: it clips without creating
+   a scroll container, which is what actually stops iOS from side-scrolling. */
 html,
-body {
+body,
+#root {
   overflow-x: hidden;
+  overflow-x: clip;
   overscroll-behavior-x: none;
+  max-width: 100%;
 }
 
 body {
@@ -264,6 +269,12 @@ h3 {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
   align-items: end;
+}
+
+/* Grid items (selects/inputs) must be allowed to shrink below their intrinsic
+   min-content, otherwise a long option text widens the track and overflows. */
+.form-grid > * {
+  min-width: 0;
 }
 
 /* key-value definition list (version info card) */
@@ -676,6 +687,18 @@ h3 {
     height: auto;
     min-height: 100vh;
     min-height: 100dvh;
+  }
+
+  /* Tables must fit the viewport — drop the desktop min-width so a wide table
+     wraps its cells instead of overflowing (the #1 cause of side-scrolling). */
+  .table {
+    min-width: 0;
+  }
+
+  .table th,
+  .table td {
+    padding: 10px 12px;
+    overflow-wrap: anywhere;
   }
 
   /* off-canvas sidebar drawer */
