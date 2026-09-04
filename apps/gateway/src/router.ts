@@ -40,6 +40,9 @@ export function relayHttp(
   reply: FastifyReply,
   upstreamPath: string,
 ): void {
+  const started = Date.now()
+  const ua = String(req.headers['user-agent'] ?? '').slice(0, 80)
+  console.log(`[relay] ${req.method} ${upstreamPath} machine=${machineId} ua=${ua} at=${new Date().toISOString()}`)
   const headers: Record<string, string> = {}
   for (const [k, v] of Object.entries(req.headers)) {
     if (v === undefined || DROP_HEADERS.has(k.toLowerCase())) continue
@@ -54,6 +57,9 @@ export function relayHttp(
   const raw = reply.raw
 
   const fail = (e: unknown) => {
+    console.log(
+      `[relay] ${req.method} ${upstreamPath} machine=${machineId} ERROR ${(e as Error)?.message ?? String(e)} after ${Date.now() - started}ms ua=${ua}`,
+    )
     if (raw.headersSent) {
       // Headers already streamed — just close; the client sees a truncated body.
       raw.end()
@@ -69,6 +75,9 @@ export function relayHttp(
       { method: req.method, path: upstreamPath, headers, body },
       {
         onResponse: (status, resHeaders) => {
+          console.log(
+            `[relay] ${req.method} ${upstreamPath} machine=${machineId} status=${status} after ${Date.now() - started}ms ua=${ua}`,
+          )
           const out = { ...resHeaders }
           for (const k of ['content-length', 'transfer-encoding', 'connection']) delete out[k]
           raw.writeHead(status, out)
@@ -77,6 +86,9 @@ export function relayHttp(
           raw.write(chunk)
         },
         onEnd: () => {
+          console.log(
+            `[relay] ${req.method} ${upstreamPath} machine=${machineId} END after ${Date.now() - started}ms ua=${ua}`,
+          )
           if (!raw.headersSent) raw.writeHead(200, { 'content-type': 'application/json' })
           raw.end()
         },
