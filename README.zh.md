@@ -24,7 +24,7 @@
 
 ┌──────────────────────────────────────┐                   ┌──────────────────────────────────────┐
 │Web portal / control plane / router   │                   │dsh-gateway-agent plugin              │
-│register · assign · audit   │◄── wss outbound ──│(installed in customer dsh)           │
+│register · assign · audit             │◄── wss outbound ──│(installed in customer dsh)           │
 │                                      │                   │↓ loopback                            │
 │                                      │                   │dsh web :3080                         │
 └──────────────────────────────────────┘                   └──────────────────────────────────────┘
