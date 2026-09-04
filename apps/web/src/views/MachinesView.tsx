@@ -60,6 +60,57 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
     })
   }
 
+  function renderActions(m: MachineView) {
+    const mySeat = m.seat?.userId === me.id
+    return (
+      <>
+        {m.status === 'approved' && (
+          <>
+            {mySeat ? (
+              <Button variant="ghost" disabled={busy === m.id} onClick={() => void run(m, () => api.releaseSeat(m.id))}>
+                释放席位
+              </Button>
+            ) : (
+              <Button variant="ghost" disabled={busy === m.id} onClick={() => void run(m, () => api.acquireSeat(m.id))}>
+                获取席位
+              </Button>
+            )}
+            <Button variant="primary" disabled={busy === m.id} onClick={() => openConsole(m)}>
+              打开控制台
+            </Button>
+          </>
+        )}
+        {isAdmin && m.status === 'pending' && (
+          <Button variant="primary" disabled={busy === m.id} onClick={() => void run(m, () => api.approveMachine(m.id))}>
+            批准
+          </Button>
+        )}
+        {isAdmin && m.status === 'approved' && (
+          <Button variant="ghost" disabled={busy === m.id} onClick={() => setConfirm({ kind: 'revoke', m })}>
+            吊销
+          </Button>
+        )}
+        {isAdmin && (
+          <Button variant="danger" disabled={busy === m.id} onClick={() => setConfirm({ kind: 'delete', m })}>
+            删除
+          </Button>
+        )}
+      </>
+    )
+  }
+
+  function seatLabel(m: MachineView) {
+    const mySeat = m.seat?.userId === me.id
+    return m.seat ? (
+      <>
+        {m.seat.userId}
+        {mySeat ? '（你）' : ''}
+      </>
+    ) : (
+      '空闲'
+    )
+  }
+
   return (
     <>
       <PageHeader
@@ -94,22 +145,22 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
         ) : visible.length === 0 ? (
           <Empty>{machines.length === 0 ? '暂无机器，等待节点接入' : '没有匹配的机器'}</Empty>
         ) : (
-          <div className="card__body card__body--flush">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>状态</th>
-                  <th>机器</th>
-                  <th>版本</th>
-                  <th>最后心跳</th>
-                  <th>席位</th>
-                  <th style={{ textAlign: 'right' }}>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((m) => {
-                  const mySeat = m.seat?.userId === me.id
-                  return (
+          <>
+            {/* Desktop: table */}
+            <div className="machines-table card__body card__body--flush">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>状态</th>
+                    <th>机器</th>
+                    <th>版本</th>
+                    <th>最后心跳</th>
+                    <th>席位</th>
+                    <th style={{ textAlign: 'right' }}>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((m) => (
                     <tr key={m.id}>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -125,55 +176,38 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
                       </td>
                       <td className="mono muted">{m.dshVersion || '—'}</td>
                       <td className="muted">{formatTime(m.lastHeartbeatAt)}</td>
-                      <td className="muted">
-                        {m.seat ? (
-                          <>
-                            {m.seat.userId}
-                            {mySeat ? '（你）' : ''}
-                          </>
-                        ) : (
-                          '空闲'
-                        )}
-                      </td>
-                      <td className="cell-actions">
-                        {m.status === 'approved' && (
-                          <>
-                            {mySeat ? (
-                              <Button variant="ghost" disabled={busy === m.id} onClick={() => void run(m, () => api.releaseSeat(m.id))}>
-                                释放席位
-                              </Button>
-                            ) : (
-                              <Button variant="ghost" disabled={busy === m.id} onClick={() => void run(m, () => api.acquireSeat(m.id))}>
-                                获取席位
-                              </Button>
-                            )}
-                            <Button variant="primary" disabled={busy === m.id} onClick={() => openConsole(m)}>
-                              打开控制台
-                            </Button>
-                          </>
-                        )}
-                        {isAdmin && m.status === 'pending' && (
-                          <Button variant="primary" disabled={busy === m.id} onClick={() => void run(m, () => api.approveMachine(m.id))}>
-                            批准
-                          </Button>
-                        )}
-                        {isAdmin && m.status === 'approved' && (
-                          <Button variant="ghost" disabled={busy === m.id} onClick={() => setConfirm({ kind: 'revoke', m })}>
-                            吊销
-                          </Button>
-                        )}
-                        {isAdmin && (
-                          <Button variant="danger" disabled={busy === m.id} onClick={() => setConfirm({ kind: 'delete', m })}>
-                            删除
-                          </Button>
-                        )}
-                      </td>
+                      <td className="muted">{seatLabel(m)}</td>
+                      <td className="cell-actions">{renderActions(m)}</td>
                     </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile: cards */}
+            <div className="machines-cards">
+              {visible.map((m) => (
+                <div className="machine-card" key={m.id}>
+                  <div className="machine-card__head">
+                    <div className="machine-card__title">
+                      <StatusDot online={m.online} />
+                      <strong title={m.name}>{m.name}</strong>
+                      <StatusBadge status={m.status} />
+                    </div>
+                    <span className="mono muted" title={m.id}>
+                      {shortId(m.id)}
+                    </span>
+                  </div>
+                  <div className="machine-card__meta">
+                    <span>版本 {m.dshVersion || '—'}</span>
+                    <span>最后心跳 {formatTime(m.lastHeartbeatAt)}</span>
+                    <span>席位 {seatLabel(m)}</span>
+                  </div>
+                  <div className="machine-card__actions">{renderActions(m)}</div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </Card>
 

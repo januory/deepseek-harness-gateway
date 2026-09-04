@@ -647,6 +647,11 @@ h3 {
   display: none;
 }
 
+/* machine cards are the mobile alternative to the table — hidden on desktop */
+.machines-cards {
+  display: none;
+}
+
 /* ---- responsive / mobile ------------------------------------------------------- */
 
 @media (max-width: 768px) {
@@ -772,5 +777,67 @@ h3 {
 
   .console__actions {
     flex-wrap: wrap;
+  }
+
+  /* machines: switch from table to stacked cards */
+  .machines-table {
+    display: none;
+  }
+
+  .machines-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .machine-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    background: #fff;
+    box-shadow: var(--shadow);
+  }
+
+  .machine-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .machine-card__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .machine-card__title strong {
+    font-size: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .machine-card__meta {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .machine-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .machine-card__actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
   }
 }
