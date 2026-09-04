@@ -7,6 +7,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { IStore } from 'dsh-gateway-store'
 import type { NodeRegistry } from './nodes.js'
 import { authorizeConsole } from './authz.js'
+import { CONSOLE_ADAPT_ENABLED, injectMobileAdapt } from './console-adapt.js'
 
 const FORWARD_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'] as const
 const DROP_HEADERS = new Set([
@@ -55,8 +56,19 @@ export function relayHttp(
 
   // Stream the relayed response through the raw socket (a buffered relay can't
   // carry long-lived SSE or slow machine-side queries). Fail-closed on error.
+  // The one exception: GET pages the node answers as small text/html — those
+  // are buffered and passed through injectMobileAdapt so phones get the
+  // portrait-adaptation layer (console-adapt.ts).
   reply.hijack()
   const raw = reply.raw
+
+  // HTML-injection state. resHeaders are stashed because the transformed body
+  // is only complete at onEnd, and the headers must be written with it.
+  let htmlBuf: string | null = null // null = streaming mode
+  let pendingStatus = 0
+  let pendingHeaders: Record<string, string> | null = null
+  const HTML_BUFFER_CAP = 256 * 1024
+  const wantsInjection = CONSOLE_ADAPT_ENABLED && req.method === 'GET'
 
   const fail = (e: unknown) => {
     console.log(
@@ -71,6 +83,16 @@ export function relayHttp(
     raw.end(JSON.stringify({ error: 'relay failed', detail: String((e as Error)?.message ?? e) }))
   }
 
+  /** Decide at first response headers whether to buffer for injection. */
+  const isHtmlForInjection = (status: number, resHeaders: Record<string, string>): boolean => {
+    if (!wantsInjection) return false
+    const type = (resHeaders['content-type'] ?? '').toLowerCase()
+    if (!type.startsWith('text/html')) return false
+    const encoding = (resHeaders['content-encoding'] ?? '').toLowerCase()
+    if (encoding !== '' && encoding !== 'identity') return false
+    return status >= 200 && status < 300
+  }
+
   try {
     registry.relayStream(
       machineId,
@@ -82,16 +104,45 @@ export function relayHttp(
           )
           const out = { ...resHeaders }
           for (const k of ['content-length', 'transfer-encoding', 'connection']) delete out[k]
+          if (isHtmlForInjection(status, resHeaders)) {
+            htmlBuf = ''
+            pendingStatus = status
+            pendingHeaders = out
+            return
+          }
           raw.writeHead(status, out)
         },
         onData: (chunk) => {
           downBytes += chunk.length
-          raw.write(chunk)
+          if (htmlBuf === null) {
+            raw.write(chunk)
+            return
+          }
+          if (htmlBuf.length + chunk.length > HTML_BUFFER_CAP) {
+            // Oversized HTML: abandon injection and stream what we buffered.
+            const out = pendingHeaders
+            if (!raw.headersSent && out !== null) raw.writeHead(pendingStatus, out)
+            pendingHeaders = null
+            raw.write(Buffer.from(htmlBuf, 'utf8'))
+            htmlBuf = null
+            raw.write(chunk)
+            return
+          }
+          htmlBuf += chunk.toString('utf8')
         },
         onEnd: () => {
           console.log(
             `[relay] ${req.method} ${upstreamPath} machine=${machineId} END after ${Date.now() - started}ms up=${bodyUp}B down=${downBytes}B ua=${ua}`,
           )
+          if (htmlBuf !== null) {
+            const out = pendingHeaders
+            const bodyText = injectMobileAdapt(htmlBuf)
+            if (!raw.headersSent && out !== null) raw.writeHead(pendingStatus, out)
+            pendingHeaders = null
+            htmlBuf = null
+            raw.end(bodyText, 'utf8')
+            return
+          }
           if (!raw.headersSent) raw.writeHead(200, { 'content-type': 'application/json' })
           raw.end()
         },
