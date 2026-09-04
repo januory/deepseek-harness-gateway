@@ -680,6 +680,14 @@ h3 {
     height: auto;
     min-height: 100vh;
     min-height: 100dvh;
+    /* Disable pinch-zoom on phones: allow only vertical panning. */
+    touch-action: pan-y;
+  }
+
+  /* 16px+ inputs stop iOS Safari from auto-zooming the page on focus. */
+  .input,
+  .select {
+    font-size: 16px;
   }
 
   .shell {
