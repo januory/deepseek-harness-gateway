@@ -52,6 +52,17 @@ export function relayHttp(
     headers[k] = Array.isArray(v) ? v.join(', ') : v
   }
 
+  // The node gzips text/html responses over 1KB when the browser advertises
+  // Accept-Encoding, and console-adapt cannot inject into compressed bytes.
+  // For document-like GETs (last path segment has no extension) ask the node
+  // for identity so the index arrives plain, gets the adapt layer injected,
+  // and is streamed out uncompressed. Hashed asset requests keep compression.
+  const lastSegment = (upstreamPath.split('?')[0] ?? '').split('/').pop() ?? ''
+  const docLikeGet = CONSOLE_ADAPT_ENABLED && req.method === 'GET' && !lastSegment.includes('.')
+  if (docLikeGet) {
+    delete headers['accept-encoding']
+  }
+
   const body = Buffer.isBuffer(req.body) ? (req.body as Buffer) : undefined
 
   // Stream the relayed response through the raw socket (a buffered relay can't
