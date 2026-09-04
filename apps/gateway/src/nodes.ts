@@ -72,6 +72,7 @@ const WS_DROP_HEADERS = new Set(['host', 'connection', 'upgrade', 'origin', 'sec
 export class NodeRegistry {
   private nodes = new Map<string, ConnectedNode>()
   private streams = new Map<number, RelayStreamState>()
+  private streamsNode = new Map<number, string>()
   private wsChannels = new Map<number, WsChannelHandler>()
   private wsChannelNode = new Map<number, string>()
   private browserWss = new WebSocketServer({ noServer: true })
@@ -109,6 +110,7 @@ export class NodeRegistry {
       s.handlers.onError(new Error('shutdown'))
     }
     this.streams.clear()
+    this.streamsNode.clear()
     this.wsChannels.clear()
     this.wsChannelNode.clear()
   }
@@ -219,10 +221,12 @@ export class NodeRegistry {
       clear()
       timer = setTimeout(() => {
         this.streams.delete(channel)
+        this.streamsNode.delete(channel)
         handlers.onError(new Error('relay timeout'))
       }, RELAY_TIMEOUT_MS)
     }
     this.streams.set(channel, { handlers, arm, clear })
+    this.streamsNode.set(channel, machineId)
     arm()
   }
 
@@ -310,6 +314,56 @@ export class NodeRegistry {
     this.wsChannelNode.delete(channel)
   }
 
+  /**
+   * Fail every in-flight relay owned by a node that just disconnected.
+   * Browser WebSocket channels are closed (1011) so the browser's client
+   * reconnects promptly instead of waiting forever on a silent channel, and
+   * buffered HTTP relays error out immediately instead of hanging until the
+   * idle timer. Without this, a mid-stream node drop leaves the console UI
+   * stuck (e.g. "loading history…" that never settles) until a full reload.
+   */
+  private dropChannelsForMachine(machineId: string): void {
+    const wsChannelsToClose: number[] = []
+    for (const [channel, mid] of this.wsChannelNode) {
+      if (mid === machineId) wsChannelsToClose.push(channel)
+    }
+    for (const channel of wsChannelsToClose) {
+      const handler = this.wsChannels.get(channel)
+      if (handler) {
+        try {
+          handler.onClose(1011)
+        } catch {
+          /* ignore */
+        }
+      }
+      this.wsChannels.delete(channel)
+      this.wsChannelNode.delete(channel)
+    }
+
+    const streamsToFail: number[] = []
+    for (const [channel, mid] of this.streamsNode) {
+      if (mid === machineId) streamsToFail.push(channel)
+    }
+    for (const channel of streamsToFail) {
+      const s = this.streams.get(channel)
+      if (s) {
+        s.clear()
+        try {
+          s.handlers.onError(new Error('node disconnected'))
+        } catch {
+          /* ignore */
+        }
+      }
+      this.streams.delete(channel)
+      this.streamsNode.delete(channel)
+    }
+
+    const dropped = wsChannelsToClose.length + streamsToFail.length
+    if (dropped > 0) {
+      console.log(`[gateway] dropped ${dropped} relay channel(s) of disconnected node ${machineId}`)
+    }
+  }
+
   attach(ws: WebSocketT): void {
     const nonce = challenge().nonce
     ws.send(JSON.stringify({ v: PROTOCOL_VERSION, type: 'challenge', payload: { nonce } }))
@@ -342,6 +396,7 @@ export class NodeRegistry {
             machineId = id
             authed = true
             this.nodes.set(id, { ws, machineId: id, status: state, leaseExpiry: Date.now() + LEASE_TTL_MS, parser })
+            console.log(`[gateway] node attached machineId=${id} state=${state} at=${new Date().toISOString()}`)
           })
           .catch((e) => console.log('[gateway] onboarding ERROR:', (e as Error).message ?? e))
         return
@@ -370,6 +425,7 @@ export class NodeRegistry {
         if (s) {
           s.clear()
           this.streams.delete(msg.payload.channel)
+          this.streamsNode.delete(msg.payload.channel)
           s.handlers.onEnd()
         }
         return
@@ -389,8 +445,19 @@ export class NodeRegistry {
       }
     })
 
-    ws.on('close', () => {
-      if (machineId) this.nodes.delete(machineId)
+    ws.on('close', (code: number, reason: Buffer) => {
+      if (machineId) {
+        this.nodes.delete(machineId)
+        this.dropChannelsForMachine(machineId)
+      }
+      console.log(
+        `[gateway] node disconnected machineId=${machineId || '(unauthed)'} code=${code} reason=${reason.toString('utf8') || '-'} at=${new Date().toISOString()}`,
+      )
+    })
+    ws.on('error', (e) => {
+      console.log(
+        `[gateway] node socket error machineId=${machineId || '(unauthed)'} err=${(e as Error).message ?? String(e)} at=${new Date().toISOString()}`,
+      )
     })
   }
 
