@@ -317,6 +317,7 @@ window.__ModuleLoader__.load({
               createElement(
                 'div',
                 { style: S.kv },
+                kv('网关地址', status.gatewayUrl || '—'),
                 kv('机器 ID', status.machineId || '—'),
                 kv('状态', status.state),
                 kv('已发节点密钥', status.hasNodeKey ? '是' : '否'),

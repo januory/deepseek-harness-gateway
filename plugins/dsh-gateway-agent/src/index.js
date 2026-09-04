@@ -90,6 +90,7 @@ class Connection {
     this.state = 'unconfigured'
     this.machineId = null
     this.nodeKey = ''
+    this.gatewayUrl = ''
     this.lastError = null
     this.heartbeat = null
     this.watchdog = null
@@ -116,6 +117,7 @@ class Connection {
 
   connect(gatewayUrl, code, config) {
     this.stop()
+    this.gatewayUrl = gatewayUrl || ''
     if (!gatewayUrl) {
       this.setState('unconfigured')
       return
@@ -138,6 +140,7 @@ class Connection {
     }
 
     this.setState('connecting')
+    console.log(`[dsh-gateway-agent] connecting ${agentWebSocketUrl(gatewayUrl)} machineId=${this.machineId || '(none)'} at=${new Date().toISOString()}`)
 
     let ws
     try {
@@ -217,14 +220,21 @@ class Connection {
 
     ws.on('close', (closeCode) => {
       if (this.ws !== ws) return // stale socket; a newer connect already took over
+      const wasOnline = this.state === 'online' || this.state === 'pending'
       this.setState('error')
       this.lastError = 'connection closed (' + closeCode + ')'
+      console.log(
+        `[dsh-gateway-agent] connection closed code=${closeCode} wasOnline=${wasOnline} machineId=${this.machineId || '(none)'} at=${new Date().toISOString()}`,
+      )
       this.scheduleReconnect(gatewayUrl, code, config)
     })
     ws.on('error', (e) => {
       if (this.ws !== ws) return
       this.lastError = e && e.message ? e.message : String(e)
       this.setState('error')
+      console.log(
+        `[dsh-gateway-agent] connection error err=${this.lastError} machineId=${this.machineId || '(none)'} at=${new Date().toISOString()}`,
+      )
     })
   }
 
@@ -408,9 +418,21 @@ class Connection {
   }
 
   status() {
+    // The configured server address comes from the durable config (survives
+    // reloads and edits made before the next connect); fall back to the address
+    // of the most recent connect attempt. gatewayUrl is not secret — it already
+    // survives sanitizeConfig in getConfig.
+    let configuredUrl = ''
+    try {
+      const cfg = this.configStore ? this.configStore.read() : {}
+      configuredUrl = (cfg && cfg.gatewayUrl) || ''
+    } catch {
+      /* keep the connect-time address */
+    }
     return {
       state: this.state,
       machineId: this.machineId,
+      gatewayUrl: configuredUrl || this.gatewayUrl || '',
       hasNodeKey: !!this.nodeKey,
       agentVersion: AGENT_VERSION,
       dshVersion: this.dshVersion,
