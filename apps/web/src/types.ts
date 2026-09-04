@@ -53,3 +53,36 @@ export interface AuditEvent {
   result: AuditResult
   detail?: string
 }
+
+// ---- version / hot-update ----------------------------------------------------
+
+export interface CommitInfo {
+  hash: string
+  short: string
+  author: string
+  date: string
+  subject: string
+}
+
+export interface VersionInfo {
+  repo: string
+  branch: string
+  remote: string | null
+  dirty: boolean
+  head: CommitInfo | null
+}
+
+export interface UpdateStatus extends VersionInfo {
+  behind: number
+  ahead: number
+  remoteHead: string | null
+  incoming: CommitInfo[]
+}
+
+export interface UpdateResult {
+  ok: boolean
+  from: string
+  to: string
+  pulled: CommitInfo[]
+  reload: 'watch' | 'restart'
+}

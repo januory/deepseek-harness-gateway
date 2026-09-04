@@ -10,6 +10,7 @@ import { NodeRegistry } from './nodes.js'
 import { registerRouter } from './router.js'
 import { buildAuth, bootstrap, SESSION_COOKIE } from './auth.js'
 import { registerControl } from './control.js'
+import { registerUpdater } from './updater.js'
 import { authorizeConsole, getCookie } from './authz.js'
 
 const HOST = process.env.GATEWAY_HOST ?? '127.0.0.1'
@@ -53,6 +54,9 @@ await auth.register(app, store)
 
 // Control-plane REST API (users/machines/assignments/pairing-codes/seats/audit).
 await registerControl(app, store, registry, auth)
+
+// Version / hot-update API (git check + fast-forward pull + reload).
+await registerUpdater(app, auth, store)
 
 app.get('/health', async () => ({
   ok: true,

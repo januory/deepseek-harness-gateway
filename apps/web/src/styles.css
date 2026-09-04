@@ -257,6 +257,26 @@ h3 {
   align-items: end;
 }
 
+/* key-value definition list (version info card) */
+.kv {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 10px 14px;
+  margin: 0;
+}
+
+.kv dt {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding-top: 1px;
+}
+
+.kv dd {
+  margin: 0;
+  word-break: break-all;
+}
+
 /* ---- buttons --------------------------------------------------------------------- */
 
 .btn {

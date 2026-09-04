@@ -9,7 +9,10 @@ import type {
   PublicUser,
   Role,
   SeatView,
+  UpdateResult,
+  UpdateStatus,
   UserView,
+  VersionInfo,
 } from './types'
 
 class ApiError extends Error {
@@ -103,4 +106,9 @@ export const api = {
   // ---- audit -------------------------------------------------------------------------
   audit: (filters: { machineId?: string; since?: string } = {}) =>
     req<{ events: AuditEvent[] }>('/gw/audit' + qs(filters)),
+
+  // ---- version / hot-update ------------------------------------------------------------
+  version: () => req<VersionInfo>('/gw/version'),
+  checkVersion: () => req<UpdateStatus>('/gw/version/check', { method: 'POST' }),
+  updateVersion: () => req<UpdateResult>('/gw/version/update', { method: 'POST' }),
 }
