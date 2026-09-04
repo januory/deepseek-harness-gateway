@@ -13,6 +13,13 @@ export default defineConfig({
       '/agent': { target: 'ws://127.0.0.1:3300', ws: true },
     },
   },
-  build: { outDir: 'dist' },
+  build: {
+    outDir: 'dist',
+    // Don't wipe dist before building: a hot-update rebuild (`pnpm -r build`)
+    // that fails or gets interrupted (e.g. tsx watch restarts the gateway on
+    // pulled gateway-file changes) must not delete the last-good portal build.
+    // Hashed asset names + index.html rewritten last keep old files harmless.
+    emptyOutDir: false,
+  },
   base: '/portal/',
 })

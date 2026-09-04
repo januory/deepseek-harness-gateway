@@ -72,13 +72,27 @@ app.get('/nodes', async () => ({ nodes: await registry.listNodes() }))
 // its assets at `/portal/*` (Vite base=/portal/), so the dsh web UI's absolute
 // paths (/assets, /api, /plugins) fall through to the `/*` relay passthrough.
 const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url))
+const indexHtml = join(webDist, 'index.html')
+
+// The SPA shell must always be fresh so a hot-updated build (new hashed assets)
+// is picked up immediately instead of a stale cached copy. Re-check existence on
+// every request: a hot-update rebuild can transiently remove dist/index.html, and
+// a failed or interrupted build must degrade to a retryable 503 rather than a raw
+// ENOENT 500 that never recovers.
+app.get('/', async (_req, reply) => {
+  if (!existsSync(indexHtml)) {
+    app.log.warn('portal index.html missing — serving 503 (rebuild in progress or failed)')
+    return reply
+      .code(503)
+      .type('text/html')
+      .header('Cache-Control', 'no-store')
+      .header('Retry-After', '5')
+      .send('<!doctype html><html lang="en"><body><p>Portal is rebuilding — refresh in a few seconds.</p></body></html>')
+  }
+  return reply.type('text/html').header('Cache-Control', 'no-store').send(readFileSync(indexHtml))
+})
+
 if (existsSync(webDist)) {
-  const indexHtml = join(webDist, 'index.html')
-  // The SPA shell must always be fresh so a hot-updated build (new hashed
-  // assets) is picked up immediately instead of a stale cached copy.
-  app.get('/', async (_req, reply) =>
-    reply.type('text/html').header('Cache-Control', 'no-store').send(readFileSync(indexHtml)),
-  )
   await app.register(fastifyStatic, { root: webDist, prefix: '/portal/' })
 } else {
   app.log.warn('apps/web/dist not built — portal static hosting disabled')
