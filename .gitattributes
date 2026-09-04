@@ -1,0 +1,8 @@
+# Force LF line endings for files whose bytes must survive a Windows checkout
+# unchanged — a CRLF shebang breaks shell entrypoints inside Linux containers,
+# and LF keeps the Dockerfile/GitHub-Actions files canonical.
+*.sh text eol=lf
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
