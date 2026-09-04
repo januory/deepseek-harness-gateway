@@ -650,8 +650,19 @@ h3 {
 /* ---- responsive / mobile ------------------------------------------------------- */
 
 @media (max-width: 768px) {
+  html,
+  body,
+  #root {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
   .shell {
     display: block;
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
   }
 
   /* off-canvas sidebar drawer */
