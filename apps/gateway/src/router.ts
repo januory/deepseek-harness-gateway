@@ -137,6 +137,9 @@ export function relayHttp(
           if (htmlBuf !== null) {
             const out = pendingHeaders
             const bodyText = injectMobileAdapt(htmlBuf)
+            console.log(
+              `[relay] ${req.method} ${upstreamPath} machine=${machineId} MOBILE-ADAPT injected (${downBytes}B -> ${Buffer.byteLength(bodyText, 'utf8')}B) ua=${ua}`,
+            )
             if (!raw.headersSent && out !== null) raw.writeHead(pendingStatus, out)
             pendingHeaders = null
             htmlBuf = null
