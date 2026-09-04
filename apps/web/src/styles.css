@@ -28,6 +28,13 @@ body,
   margin: 0;
 }
 
+/* Never let the page pan horizontally on touch devices (iOS rubber-banding). */
+html,
+body {
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+}
+
 body {
   background: var(--bg);
   color: var(--text);
@@ -146,7 +153,8 @@ h3 {
 
 .main {
   flex: 1;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 24px 28px;
 }
 
