@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-[deepseek-harness-gateway](../README.md) 的客户机接入插件。
+[deepseek-harness-gateway](../../README.md) 的客户机接入插件。
 
 ## 它是什么
 
@@ -11,7 +11,7 @@
 ## 环境要求
 
 - 客户机上需有 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（web profile）。
-- 网关服务器（见 `../apps/gateway`）已运行，且客户机可访问，例如 `wss://gateway.example.com/agent`。
+- 网关服务器（见 `../../apps/gateway`）已运行，且客户机可访问，例如 `wss://gateway.example.com/agent`。
 - 由网关管理员签发的配对码。
 
 ## 安装
@@ -45,4 +45,4 @@ dsh plugin --profile web add ./plugins/dsh-gateway-agent
 
 插件由 dsh host 面（Node）与浏览器客户端里的一张设置卡共同组成。host 面拨号 `gatewayUrl`，完成配对码 + HMAC 挑战应答，随后把来自网关的浏览器请求与 WebSocket 流中继到本机 loopback dsh web（`127.0.0.1:<dshPort>`），并注入经 dsh Connection 服务在进程内签发的操作员 cookie。
 
-完整架构见[项目 README](../README.md)。
+完整架构见[项目 README](../../README.md)。

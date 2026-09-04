@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-The customer-machine access plugin for [deepseek-harness-gateway](../README.md).
+The customer-machine access plugin for [deepseek-harness-gateway](../../README.md).
 
 ## What it is
 
@@ -11,7 +11,7 @@ The customer-machine access plugin for [deepseek-harness-gateway](../README.md).
 ## Requirements
 
 - A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) installation (web profile) on the machine.
-- The gateway server (see `../apps/gateway`) running and reachable from the machine, e.g. `wss://gateway.example.com/agent`.
+- The gateway server (see `../../apps/gateway`) running and reachable from the machine, e.g. `wss://gateway.example.com/agent`.
 - A pairing code issued by the gateway administrator.
 
 ## Install
@@ -45,4 +45,4 @@ Values entered in the **网关接入** UI are saved here; the plugin auto-connec
 
 The plugin runs as a dsh host plugin (Node) plus a small settings card in the browser client. On the host side it dials `gatewayUrl`, completes a pairing-code + HMAC challenge-response, then relays browser requests and WebSocket streams from the gateway to the machine's loopback dsh web (`127.0.0.1:<dshPort>`), injecting an operator cookie minted in-process via the dsh Connection service.
 
-See the [project README](../README.md) for the full architecture.
+See the [project README](../../README.md) for the full architecture.
