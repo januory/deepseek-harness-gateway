@@ -73,7 +73,7 @@ export function SettingsView({ me }: { me: PublicUser }) {
         {info === null ? (
           <Spinner />
         ) : !info.git ? (
-          <Empty>镜像内未打包 git 仓库（未指定源码路径），不可热更新</Empty>
+          <Empty>当前源码不是 git 仓库，不可热更新</Empty>
         ) : (
           <dl className="kv">
             <dt>仓库</dt>
@@ -119,7 +119,7 @@ export function SettingsView({ me }: { me: PublicUser }) {
       >
         {!hasGit ? (
           <p className="muted" style={{ margin: 0 }}>
-            未指定源码仓库（DSH_GATEWAY_GIT_REPO），容器使用镜像内打包的源码运行，无法热更新。
+            当前源码不是 git 仓库，无法热更新（把 git 仓库挂载到源码目录即可启用）。
           </p>
         ) : check === null ? (
           <p className="muted" style={{ margin: 0 }}>
