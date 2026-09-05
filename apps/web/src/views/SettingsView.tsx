@@ -3,6 +3,30 @@ import { api } from '../api'
 import type { PublicUser, UpdateStatus, VersionInfo } from '../types'
 import { Button, Card, Empty, PageHeader, Spinner, useToast } from '../ui'
 
+// A hot-update makes the gateway reload itself: the process is restarted (tsx
+// watch re-runs on pulled gateway-source files, or the compiled server re-execs)
+// and its in-memory sessions are cleared. During that window port 3300 is briefly
+// down, so a browser (or a proxy in front of it) can show 502 and the SPA never
+// reaches the login page. Poll `/health` until the new process is reachable, then
+// hard-reload so the freshly-built portal and the now-invalid session are picked
+// up — landing the user on the login page instead of a stale or error screen.
+function waitForGatewayUp(timeoutMs = 60_000, pollMs = 750): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  return new Promise((resolve) => {
+    const tick = async () => {
+      try {
+        const res = await fetch('/health', { credentials: 'same-origin', cache: 'no-store' })
+        if (res.ok) return void resolve()
+      } catch {
+        /* gateway not reachable yet — keep polling */
+      }
+      if (Date.now() >= deadline) return void resolve()
+      setTimeout(tick, pollMs)
+    }
+    void tick()
+  })
+}
+
 export function SettingsView({ me }: { me: PublicUser }) {
   const isSystemAdmin = me.role === 'system-admin'
   const toast = useToast()
@@ -12,6 +36,7 @@ export function SettingsView({ me }: { me: PublicUser }) {
   const [err, setErr] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
   const [updating, setUpdating] = useState(false)
+  const [reloading, setReloading] = useState(false)
 
   const load = useCallback(async () => {
     setErr(null)
@@ -46,18 +71,33 @@ export function SettingsView({ me }: { me: PublicUser }) {
       const r = await api.updateVersion()
       toast('ok', `已更新 ${r.pulled.length} 个提交，服务正在重载…`)
       setCheck(null)
-      await load()
     } catch (e) {
-      toast('error', String((e as Error).message ?? e))
-    } finally {
-      setUpdating(false)
+      const err = e as { status?: number; message?: string }
+      // A 5xx or a bare network error means the gateway restarted before it could
+      // answer (the request was interrupted by the reload), so the update DID get
+      // applied and we should recover rather than report failure. A 4xx (e.g. a
+      // merge conflict) is a genuine failure — surface it and stop.
+      if (err.status === undefined || err.status >= 500) {
+        toast('ok', '更新已提交，服务正在重载…')
+        setCheck(null)
+      } else {
+        toast('error', String(err.message ?? e))
+        setUpdating(false)
+        return
+      }
     }
+    setUpdating(false)
+    // The gateway reloads (in-memory sessions are cleared) → drop to the fresh
+    // login page once the new process answers.
+    setReloading(true)
+    await waitForGatewayUp()
+    window.location.reload()
   }
 
   const head = info?.head
   const hasGit = info?.git !== false
   const behind = check?.behind ?? 0
-  const canUpdate = isSystemAdmin && hasGit && behind > 0 && !updating
+  const canUpdate = isSystemAdmin && hasGit && behind > 0 && !updating && !reloading
 
   return (
     <>
@@ -166,9 +206,14 @@ export function SettingsView({ me }: { me: PublicUser }) {
               </div>
             )}
 
+            {reloading ? (
+              <p className="muted" style={{ marginTop: 10 }}>
+                服务正在重载，恢复后自动跳转到登录页…
+              </p>
+            ) : null}
             <div style={{ marginTop: 14 }}>
               <Button variant="danger" disabled={!canUpdate} onClick={() => void doUpdate()}>
-                {updating ? '更新中…' : isSystemAdmin ? '更新到最新' : '仅系统管理员可更新'}
+                {reloading ? '服务重载中…' : updating ? '更新中…' : isSystemAdmin ? '更新到最新' : '仅系统管理员可更新'}
               </Button>
             </div>
           </>

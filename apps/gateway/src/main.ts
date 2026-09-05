@@ -58,13 +58,17 @@ await registerControl(app, store, registry, auth)
 // Version / hot-update API (git check + fast-forward pull + reload).
 await registerUpdater(app, auth, store)
 
-app.get('/health', async () => ({
-  ok: true,
-  service: 'deepseek-harness-gateway',
-  version: '0.1.0',
-  protocol: PROTOCOL_VERSION,
-  connectedNodes: registry.connectedCount(),
-}))
+// no-store so the portal's post-update recovery poll (and any proxy/cache in
+// front of the gateway) always re-checks the live process instead of a stale body.
+app.get('/health', async (_req, reply) =>
+  reply.header('Cache-Control', 'no-store').send({
+    ok: true,
+    service: 'deepseek-harness-gateway',
+    version: '0.1.0',
+    protocol: PROTOCOL_VERSION,
+    connectedNodes: registry.connectedCount(),
+  }),
+)
 
 app.get('/nodes', async () => ({ nodes: await registry.listNodes() }))
 
