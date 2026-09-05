@@ -108,6 +108,18 @@ const WSCHECK_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"
 app.get('/wscheck', async (_req, reply) =>
   reply.type('text/html').header('Cache-Control', 'no-store').send(WSCHECK_HTML))
 
+// Console boot/JS-error probe endpoint (see console-adapt.ts postDiag):
+// logs device-side uncaught errors with UA so failures that only happen on a
+// specific built-in browser become visible server-side.
+app.post('/console-diag', async (req, reply) => {
+  const ua = String(req.headers['user-agent'] ?? '').slice(0, 120)
+  const b = (req.body ?? {}) as { kind?: unknown; detail?: unknown; href?: unknown }
+  console.log(
+    `[console-diag] ua=${ua} kind=${String(b.kind ?? '?')} detail=${String(b.detail ?? '').slice(0, 400)} href=${String(b.href ?? '').slice(0, 160)} at=${new Date().toISOString()}`,
+  )
+  return reply.code(204).send()
+})
+
 // wscheck echo server: text frames echo as 'echo:<payload>'; the first text
 // frame answers 'pong:hello'. Compression disabled (mirrors console mux).
 const wscheckWss = new WebSocketServer({ noServer: true, perMessageDeflate: false })

@@ -141,6 +141,39 @@ const ADAPT_JS = `
   if (window.__dshGwAdaptInstalled) return
   window.__dshGwAdaptInstalled = true
   var KEY = 'dsh-gw-force-desktop'
+
+  // ---- boot/JS-error probe: report to the gateway so device-only failures
+  // (e.g. a vendor browser engine crashing early in the console boot) become
+  // visible in the gateway log without any device devtools. ----
+  var DIAG = '/console-diag'
+  function postDiag (kind, detail) {
+    try {
+      var payload = JSON.stringify({
+        kind: kind,
+        ua: String(navigator.userAgent || '').slice(0, 120),
+        detail: String(detail == null ? '' : detail).slice(0, 500),
+        href: String(location.href || '').slice(0, 200)
+      })
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(DIAG, new Blob([payload], { type: 'application/json' }))
+      } else {
+        var x = new XMLHttpRequest()
+        x.open('POST', DIAG, true)
+        x.setRequestHeader('content-type', 'application/json')
+        x.send(payload)
+      }
+    } catch (e) {}
+  }
+  window.addEventListener('error', function (e) {
+    postDiag('error', (e && e.message ? e.message : String(e)) + ' @' + (e && e.filename ? e.filename : '') + ':' + (e && e.lineno != null ? e.lineno : ''))
+  }, true)
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e && e.reason
+    postDiag('rejection', r && r.message ? r.message : String(r))
+  }, true)
+  try {
+    postDiag('boot', 'adapt script ran; readyState=' + document.readyState)
+  } catch (e) {}
   var ACTIVE = 'dsh-gw-mobile'
   var FAB_ID = 'dshGwMobileFab'
   var pill = null
