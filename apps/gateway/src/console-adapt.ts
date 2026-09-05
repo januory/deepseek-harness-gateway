@@ -130,6 +130,15 @@ body.dsh-gw-mobile [class$="_scroll"]{padding:8px 10px}
 body.dsh-gw-mobile [class$="_input"],body.dsh-gw-mobile textarea,body.dsh-gw-mobile input{font-size:16px}
 /* Composer clears the iOS home indicator. */
 body.dsh-gw-mobile [class$="_composer"]{padding-bottom:calc(4px + env(safe-area-inset-bottom))}
+/* Composer toolbar: keep the right group (model + context meter + send) on the
+   SAME line as the left tools on phones. The desktop flex-wrap pushes the
+   trailing group onto a second line once the model trigger's 45cqw cap is too
+   wide; shrink the trigger so its long name truncates (ellipsis) instead. */
+body.dsh-gw-mobile [class$="_row"]{flex-wrap:nowrap !important;gap:8px !important}
+body.dsh-gw-mobile [class$="_tools"]{gap:8px !important}
+body.dsh-gw-mobile [class$="_trailing"]{gap:8px !important}
+body.dsh-gw-mobile [class$="_trailing"] [class$="_trigger"]{max-width:96px !important;height:24px !important;min-height:24px !important;font-size:11px !important}
+body.dsh-gw-mobile [class$="_trailing"] [class$="_trigger"] [class$="_triggerEffort"]{font-size:11px !important}
 /* Slightly smaller message type on phones. */
 body.dsh-gw-mobile [class$="_scrollBody"] [class$="_root"],body.dsh-gw-mobile [class$="_scrollBody"] [class$="_bubble"]{font-size:14.5px}
 /* Settings dialog: the desktop panel is a two-column layout (188px nav + 157px
