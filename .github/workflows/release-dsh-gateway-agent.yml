@@ -1,10 +1,10 @@
-# 手动发布 dsh-gateway-agent（客户机接入插件）到 npm。
+# 手动发布 dsh-gateway-agent 插件到 npm（发布包名 @januory/dsh-gateway-agent）。
 #
 # 版本号直接取自 plugins/dsh-gateway-agent/package.json —— 发版前先在 main 上提交改好的 version。
 #   1. 安装依赖（ws）
 #   2. 跑单元测试（plain JS，框架无关）
 #   3. 校验 v<version> tag 尚未存在（防止重复发布）
-#   4. npm publish（provenance）
+#   4. npm publish（provenance，scope 包默认私有，需 --access public）
 #   5. 打 v<version> tag 并推送
 #   6. 用 --generate-notes 创建 GitHub Release
 #

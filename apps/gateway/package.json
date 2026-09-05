@@ -1,5 +1,5 @@
 {
-  "name": "dsh-gateway-server",
+  "name": "@januory/dsh-gateway-server",
   "version": "0.1.0",
   "type": "module",
   "description": "deepseek-harness-gateway: multi-tenant managed gateway router (control plane + router + portal hosting).",

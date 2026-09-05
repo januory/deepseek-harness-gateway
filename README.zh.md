@@ -56,7 +56,7 @@ pnpm install
 启动网关：
 
 ```sh
-pnpm --filter dsh-gateway-server dev      # http://127.0.0.1:3300/health
+pnpm --filter @januory/dsh-gateway-server dev      # http://127.0.0.1:3300/health
 ```
 
 开发模式启动门户前端（把 `/health` 与 `/agent` 代理到 3300 的网关）：
@@ -74,7 +74,7 @@ pnpm --filter dsh-gateway-web build
 从 npm 安装网关（一个预构建的 `dshgw` CLI，自带服务器 + 门户）：
 
 ```sh
-npm install -g dsh-gateway-server
+npm install -g @januory/dsh-gateway-server
 dshgw                              # http://127.0.0.1:3300/health
 ```
 
@@ -100,15 +100,18 @@ dshgw --help   # 列出全部参数
 把接入插件装进客户机的 dsh（web profile）：
 
 ```sh
+# 从 npm 安装：
+dsh plugin --profile web add @januory/dsh-gateway-agent
+# 或从本地 checkout 安装：
 dsh plugin --profile web add ./plugins/dsh-gateway-agent
 ```
 
 ## 使用
 
-1. 启动网关（`pnpm --filter dsh-gateway-server dev`），并可按需构建门户（`pnpm --filter dsh-gateway-web build`），使其由网关根路径托管。
+1. 启动网关（`pnpm --filter @januory/dsh-gateway-server dev`），并可按需构建门户（`pnpm --filter dsh-gateway-web build`），使其由网关根路径托管。
 2. 签发配对码：
    ```sh
-   DSH_GATEWAY_PAIRING_CODES="<code>" pnpm --filter dsh-gateway-server dev
+   DSH_GATEWAY_PAIRING_CODES="<code>" pnpm --filter @januory/dsh-gateway-server dev
    ```
 3. 在客户机上装好接入插件（见"安装"），打开 dsh 的 **设置 → 网关接入**，填入网关地址（`wss://<网关主机>`，不含路径）与配对码，点 **发起入网申请**。
 4. 在网关侧审批该机器、分配给用户，然后从门户打开——读取与交互会实时中继到该机器的 dsh WebUI。

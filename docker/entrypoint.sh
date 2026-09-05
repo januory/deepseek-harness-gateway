@@ -35,7 +35,7 @@ echo "[gateway] starting gateway (supervised loop, deterministic hot-reload)…"
 # unreliable — a pull could advance HEAD while the running process kept serving
 # pre-pull code.
 while true; do
-  pnpm --filter dsh-gateway-server start || true
+  pnpm --filter @januory/dsh-gateway-server start || true
   echo "[gateway] gateway exited; restarting in 1s…"
   sleep 1
 done

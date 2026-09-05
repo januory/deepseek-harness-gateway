@@ -56,7 +56,7 @@ pnpm install
 Run the gateway server:
 
 ```sh
-pnpm --filter dsh-gateway-server dev      # http://127.0.0.1:3300/health
+pnpm --filter @januory/dsh-gateway-server dev      # http://127.0.0.1:3300/health
 ```
 
 Run the portal front end in development (proxies `/health` and `/agent` to the gateway on 3300):
@@ -74,7 +74,7 @@ pnpm --filter dsh-gateway-web build
 Install the gateway from npm (a prebuilt `dshgw` CLI that bundles the server + portal):
 
 ```sh
-npm install -g dsh-gateway-server
+npm install -g @januory/dsh-gateway-server
 dshgw                              # http://127.0.0.1:3300/health
 ```
 
@@ -101,15 +101,18 @@ Docker-only env vars (no CLI flag): `DSH_GATEWAY_BUILD_CMD` (default `pnpm -r bu
 Install the agent plugin into a customer machine's dsh (web profile):
 
 ```sh
+# from npm:
+dsh plugin --profile web add @januory/dsh-gateway-agent
+# or from a local checkout:
 dsh plugin --profile web add ./plugins/dsh-gateway-agent
 ```
 
 ## Usage
 
-1. Start the gateway (`pnpm --filter dsh-gateway-server dev`) and, optionally, build the portal (`pnpm --filter dsh-gateway-web build`) so it is served at the gateway root.
+1. Start the gateway (`pnpm --filter @januory/dsh-gateway-server dev`) and, optionally, build the portal (`pnpm --filter dsh-gateway-web build`) so it is served at the gateway root.
 2. Issue a pairing code to onboard:
    ```sh
-   DSH_GATEWAY_PAIRING_CODES="<code>" pnpm --filter dsh-gateway-server dev
+   DSH_GATEWAY_PAIRING_CODES="<code>" pnpm --filter @januory/dsh-gateway-server dev
    ```
 3. On the customer machine, install the agent plugin (see Installation), then open the dsh **Settings → 网关接入** section, enter the gateway address (`wss://<gateway-host>`, path not required) and the pairing code, and click **发起入网申请**.
 4. Approve the machine at the gateway, assign it to a user, and open it from the portal — reads and interactions are relayed to that machine's dsh WebUI in real time.

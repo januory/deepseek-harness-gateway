@@ -20,7 +20,7 @@
 dsh plugin --profile web add ./plugins/dsh-gateway-agent
 ```
 
-（发布后即 `dsh plugin --profile web add dsh-gateway-agent`。）
+（发布后即 `dsh plugin --profile web add @januory/dsh-gateway-agent`。）
 
 ## 使用方法
 

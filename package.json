@@ -8,7 +8,7 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "dev:gateway": "pnpm --filter dsh-gateway-server dev",
+    "dev:gateway": "pnpm --filter @januory/dsh-gateway-server dev",
     "dev:web": "pnpm --filter dsh-gateway-web dev"
   },
   "devDependencies": {

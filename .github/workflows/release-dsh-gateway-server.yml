@@ -1,4 +1,4 @@
-# 手动发布 dsh-gateway-server（网关服务器）到 npm。
+# 手动发布 @januory/dsh-gateway-server（网关服务器）到 npm。
 #
 # 版本号直接取自 apps/gateway/package.json —— 发版前先在 main 上提交改好的 version。
 #   1. 安装 pnpm + workspace 依赖
@@ -13,9 +13,9 @@
 # 前提：仓库 Secrets 中配置 NPM_TOKEN（npm automation token 或带 publish 权限的 granular token）。
 #
 # 安装发布的包后可直接用 `dshgw` 启动网关：
-#   npm install -g dsh-gateway-server && dshgw
+#   npm install -g @januory/dsh-gateway-server && dshgw
 # 或
-#   npx dsh-gateway-server
+#   npx @januory/dsh-gateway-server
 # （可用 DSH_GATEWAY_HOST / DSH_GATEWAY_PORT / DSH_GATEWAY_DB_PATH / DSH_GATEWAY_ADMIN_PASSWORD 等配置。）
 
 name: release-dsh-gateway-server
@@ -62,7 +62,7 @@ jobs:
         run: pnpm --filter dsh-gateway-web build
 
       - name: Build gateway bundle (dshgw)
-        run: pnpm --filter dsh-gateway-server build
+        run: pnpm --filter @januory/dsh-gateway-server build
 
       - name: Read version and guard duplicate release
         id: version

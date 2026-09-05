@@ -20,7 +20,7 @@ The customer-machine access plugin for [deepseek-harness-gateway](../../README.m
 dsh plugin --profile web add ./plugins/dsh-gateway-agent
 ```
 
-(Once published, this becomes `dsh plugin --profile web add dsh-gateway-agent`.)
+(Once published, this becomes `dsh plugin --profile web add @januory/dsh-gateway-agent`.)
 
 ## Usage
 
