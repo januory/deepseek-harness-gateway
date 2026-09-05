@@ -71,6 +71,31 @@ window.__ModuleLoader__.load({
     var useState = React.useState
     var useEffect = React.useEffect
 
+    // 窄屏/手机视口检测：在插件内做移动端排版适配，无需网关侧适配器。
+    // 设定在 600px 断点（设置面板在移动端被压缩到 ~360px，内容区更窄），
+    // 返回是否处于窄屏，并跟随视口变化更新。无 matchMedia 时回退为 false。
+    function useIsNarrow() {
+      var _n = useState(false)
+      var narrow = _n[0]
+      var setNarrow = _n[1]
+      useEffect(function () {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+        var mql = window.matchMedia('(max-width: 600px)')
+        var update = function () { setNarrow(mql.matches) }
+        update()
+        if (typeof mql.addEventListener === 'function') {
+          mql.addEventListener('change', update)
+          return function () { mql.removeEventListener('change', update) }
+        }
+        if (typeof mql.addListener === 'function') {
+          mql.addListener(update)
+          return function () { mql.removeListener(update) }
+        }
+        return undefined
+      }, [])
+      return narrow
+    }
+
     var S = {
       wrap: { padding: 16, fontSize: 14, lineHeight: 1.6, maxWidth: 720, color: 'inherit' },
       title: { fontWeight: 600, fontSize: 16, margin: '0 0 4px', color: 'inherit' },
@@ -110,8 +135,11 @@ window.__ModuleLoader__.load({
       },
       statusHead: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 },
       dot: { width: 9, height: 9, borderRadius: '50%', display: 'inline-block', flexShrink: 0 },
-      mono: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 12.5 },
-      kv: { display: 'grid', gridTemplateColumns: '110px 1fr', gap: '4px 12px', fontSize: 12.5 },
+      mono: {
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 12.5,
+        overflowWrap: 'anywhere', wordBreak: 'break-word', minWidth: 0,
+      },
+      kv: { display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: '4px 12px', fontSize: 12.5 },
       kvKey: { color: '#8b8f98' },
     }
 
@@ -162,6 +190,7 @@ window.__ModuleLoader__.load({
       var _busy = useState(false)
       var busy = _busy[0]
       var setBusy = _busy[1]
+      var narrow = useIsNarrow()
 
       // $mount 就绪后取 remote 命名空间；所有 remote 访问都做防御，绝不抛未捕获异常。
       useEffect(function () {
@@ -284,7 +313,8 @@ window.__ModuleLoader__.load({
             placeholder: placeholder,
             spellCheck: false,
             onChange: function (e) { onChange(e.target.value) },
-            style: S.input,
+            // 窄屏输入框提升到 16px，避免 iOS 聚焦自动放大页面（focus zoom）。
+            style: narrow ? Object.assign({}, S.input, { fontSize: 16, padding: '9px 12px' }) : S.input,
           }),
         )
       }
@@ -298,16 +328,17 @@ window.__ModuleLoader__.load({
         field('配对码（管理员签发）', '一次性配对码', pairingCode, setPairingCode),
         createElement(
           'div',
-          { style: S.row },
-          createElement('button', { onClick: doOnboard, disabled: busy || !remote, style: Object.assign({}, S.primary, busy || !remote ? S.disabled : {}) }, busy ? '发起中…' : '发起入网申请'),
-          createElement('button', { onClick: doRefresh, disabled: !remote, style: Object.assign({}, S.btn, !remote ? S.disabled : {}) }, '查询状态'),
+          // 窄屏下按钮改为纵向全宽排列；宽屏保持并排。
+          { style: narrow ? Object.assign({}, S.row, { flexDirection: 'column', alignItems: 'stretch', gap: 8, marginTop: 8 }) : S.row },
+          createElement('button', { onClick: doOnboard, disabled: busy || !remote, style: Object.assign({}, S.primary, busy || !remote ? S.disabled : {}, narrow ? { width: '100%', padding: '11px 14px' } : {}) }, busy ? '发起中…' : '发起入网申请'),
+          createElement('button', { onClick: doRefresh, disabled: !remote, style: Object.assign({}, S.btn, !remote ? S.disabled : {}, narrow ? { width: '100%', padding: '11px 14px' } : {}) }, '查询状态'),
         ),
         error ? createElement('div', { style: S.error }, String(error)) : null,
         notice ? createElement('div', { style: S.notice }, String(notice)) : null,
         meta
           ? createElement(
               'div',
-              { style: S.statusCard },
+              narrow ? Object.assign({}, S.statusCard, { padding: 10 }) : S.statusCard,
               createElement(
                 'div',
                 { style: S.statusHead },
