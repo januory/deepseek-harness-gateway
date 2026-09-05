@@ -195,10 +195,10 @@ const ADAPT_JS = `
   // ---- WebKit/Firefox Function.prototype.toString normalization: the dsh
   // client validates "plain object/array" by EXACT-matching
   //   Function.prototype.toString.call(Object|Array)
-  // against V8's compact "function X() { [native code] }". WebKit (iOS Safari
-  // and Chrome/CriOS) and Firefox render native code as
-  //   "function X() {\n    [native code]\n}"
-  // so the exact match fails, snapshotJsonValue rejects every assistant-stream
+  // against V8's compact single-line "function X() { [native code] }".
+  // WebKit (iOS Safari and Chrome/CriOS) and Firefox render the native-code
+  // body wrapped in newlines plus indentation, so the exact match fails,
+  // snapshotJsonValue rejects every assistant-stream
   // chunk, the session event-feed subscriber throws, and the whole conversation
   // renders zero message rows on iOS. Normalize the native form to V8's exact
   // form so the check passes on every engine. ----
