@@ -72,6 +72,56 @@ app.get('/health', async (_req, reply) =>
 
 app.get('/nodes', async () => ({ nodes: await registry.listNodes() }))
 
+// /wscheck — unauthenticated WebSocket self-test page. Opens a same-origin WS,
+// echoes text and a ~1MB binary frame, and prints what happened. Used to tell
+// whether a device/browser can carry WebSocket frames over this exact
+// nginx+TLS chain at all (vendor built-in browsers often pass the handshake
+// but lose every frame). No secrets; gated by nothing (like /health).
+const WSCHECK_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>gateway wscheck</title><style>body{font:13px/1.5 ui-monospace,monospace;background:#111;color:#9f6;padding:14px;white-space:pre-wrap}</style></head><body><div id="out">starting…</div><script>
+(function(){
+  var out=document.getElementById('out'),log=function(s){out.textContent+=s+"\\n"};
+  log('ua: '+navigator.userAgent);
+  log('proto: '+(location.protocol==='https:'?'wss':'ws')+' url: '+location.href);
+  try{log('sw: '+(navigator.serviceWorker?'present':'none'))}catch(e){}
+  var url=(location.protocol==='https:'?'wss':'ws')+'://'+location.host+'/wscheck';
+  var ws,open=false,fail='';
+  try{ ws=new WebSocket(url) }catch(e){ log('new WebSocket THREW: '+e); return }
+  var t0=Date.now(),sent=0,echoed=0,binaryEchoed=0;
+  ws.onopen=function(){ open=true; log('WS open OK at '+(Date.now()-t0)+'ms');
+    var ping=function(){ try{ ws.send('ping-'+ (++sent)) }catch(e){ log('send threw: '+e) } };
+    ping();
+    setTimeout(function(){ // one big binary frame (~1MB)
+      try{ var buf=new ArrayBuffer(1000000); ws.send(buf); log('sent 1MB binary') }catch(e){ log('big send threw: '+e) }
+    }, 600);
+  };
+  ws.onmessage=function(ev){
+    var t=Date.now()-t0;
+    if(typeof ev.data==='string'){ echoed++; log('echo #'+echoed+' "'+ev.data+'" at '+t+'ms') }
+    else { binaryEchoed++; log('binary echo OK size='+(ev.data&&ev.data.byteLength)+' at '+t+'ms') }
+  };
+  ws.onerror=function(e){ log('WS error event at '+(Date.now()-t0)+'ms (details hidden by browser)') };
+  ws.onclose=function(ev){ log('WS closed code='+ev.code+' reason='+ev.reason+' at '+(Date.now()-t0)+'ms; open='+open+' sent='+sent+' echoed='+echoed+' binEcho='+binaryEchoed) };
+  window.setTimeout(function(){ if(open){ log('still open after 8s; sent='+sent+' echoed='+echoed+' binEcho='+binaryEchoed); ws.close(1000) } }, 8000);
+})();
+</script></body></html>`
+
+app.get('/wscheck', async (_req, reply) =>
+  reply.type('text/html').header('Cache-Control', 'no-store').send(WSCHECK_HTML))
+
+// wscheck echo server: text frames echo as 'echo:<payload>'; the first text
+// frame answers 'pong:hello'. Compression disabled (mirrors console mux).
+const wscheckWss = new WebSocketServer({ noServer: true, perMessageDeflate: false })
+wscheckWss.on('connection', (ws) => {
+  ws.send('pong:hello')
+  ws.on('message', (data, isBinary) => {
+    try {
+      ws.send(data, { binary: isBinary })
+    } catch {
+      /* ignore */
+    }
+  })
+})
+
 // Portal static hosting — apps/web build output. The SPA is served at `/` and
 // its assets at `/portal/*` (Vite base=/portal/), so the dsh web UI's absolute
 // paths (/assets, /api, /plugins) fall through to the `/*` relay passthrough.
@@ -145,7 +195,9 @@ async function handleBrowserUpgrade(req: any, socket: any, head: Buffer): Promis
 }
 
 app.server.on('upgrade', (req, socket, head) => {
-  if (req.url?.startsWith('/agent')) {
+  if (req.url?.startsWith('/wscheck')) {
+    wscheckWss.handleUpgrade(req, socket, head, (ws) => wscheckWss.emit('connection', ws, req))
+  } else if (req.url?.startsWith('/agent')) {
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req))
   } else {
     void handleBrowserUpgrade(req, socket, head)
