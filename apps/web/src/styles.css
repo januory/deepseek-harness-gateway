@@ -483,40 +483,182 @@ h3 {
 .login-wrap {
   min-height: 100vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(180deg, #eef2f7 0%, #f5f6f8 100%);
+  background:
+    radial-gradient(52% 40% at 50% -8%, rgba(77, 107, 254, 0.1), transparent 70%),
+    radial-gradient(40% 32% at 88% 104%, rgba(86, 134, 254, 0.08), transparent 70%),
+    linear-gradient(180deg, #f7f9fd 0%, #eef1f8 100%);
   padding: 24px;
 }
 
 .login-card {
-  width: 360px;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: 0 8px 30px rgba(16, 24, 40, 0.08);
-  padding: 28px;
+  width: 400px;
+  max-width: 100%;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 20px;
+  box-shadow:
+    0 1px 2px rgba(16, 24, 40, 0.04),
+    0 20px 50px -12px rgba(30, 41, 82, 0.14);
+  padding: 36px 36px 28px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
+  backdrop-filter: blur(6px);
 }
 
-.login-card h1 {
-  font-size: 18px;
+/* brand block: whale tile + product name, mirrors the DeepSeek auth header */
+.login-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  padding-bottom: 4px;
 }
 
-.login-card .sub {
+.login-brand__logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  box-shadow: 0 8px 22px -6px rgba(61, 90, 254, 0.45);
+}
+
+.login-title {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.1px;
+  color: var(--text);
+}
+
+.login-sub {
+  margin: 0;
   color: var(--muted);
   font-size: 13px;
-  margin-top: -8px;
+}
+
+/* capsule (pill) fields à la DeepSeek password sign-in */
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login-field__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  padding-left: 4px;
+}
+
+.login-input.input {
+  height: 46px;
+  padding: 0 20px;
+  border-radius: 999px;
+  font-size: 14px;
+  border: 1px solid #e3e8f2;
+  background: #f9fafc;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.login-input.input:focus {
+  outline: none;
+  border-color: #4d6bfe;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(77, 107, 254, 0.14);
+}
+
+.login-input.input::placeholder {
+  color: #98a2b8;
+}
+
+.login-input.input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px #f9fafc inset;
+  -webkit-text-fill-color: var(--text);
+  caret-color: #4d6bfe;
+  transition: background-color 9999s ease-out;
 }
 
 .login-error {
   background: var(--danger-weak);
   color: #b91c1c;
-  border-radius: 8px;
-  padding: 8px 12px;
+  border-radius: 12px;
+  padding: 8px 14px;
   font-size: 13px;
+}
+
+/* capsule primary button (brand blue, DeepSeek-like) */
+.login-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 46px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(180deg, #5b7cfa 0%, #4d6bfe 55%, #3d5afe 100%);
+  box-shadow: 0 8px 20px -8px rgba(61, 90, 254, 0.6);
+  transition: filter 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
+}
+
+.login-submit:hover:not(:disabled) {
+  filter: brightness(1.06);
+  box-shadow: 0 10px 24px -8px rgba(61, 90, 254, 0.65);
+}
+
+.login-submit:active:not(:disabled) {
+  transform: translateY(1px);
+  filter: brightness(0.97);
+}
+
+.login-submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.login-submit__spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+/* GitHub repo link under the form */
+.login-github {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 2px;
+  padding: 6px 10px;
+  align-self: center;
+  border-radius: 999px;
+  color: #5a6b85;
+  font-size: 13px;
+  text-decoration: none;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.login-github:hover {
+  color: #4d6bfe;
+  background: rgba(77, 107, 254, 0.06);
+}
+
+.login-foot {
+  margin-top: 14px;
+  color: #a3adc2;
+  font-size: 12px;
+  text-align: center;
 }
 
 /* ---- modal --------------------------------------------------------------------------------- */
