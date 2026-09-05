@@ -75,7 +75,13 @@ export class NodeRegistry {
   private streamsNode = new Map<number, string>()
   private wsChannels = new Map<number, WsChannelHandler>()
   private wsChannelNode = new Map<number, string>()
-  private browserWss = new WebSocketServer({ noServer: true })
+  // Browser-facing console WebSockets run WITHOUT permessage-deflate: several
+  // vendor mobile browsers (e.g. realme/OPPO's built-in browser, often behind a
+  // system-level acceleration/relay) complete the upgrade but then lose the
+  // compressed first frames, leaving the dsh mux with up=0B / close 4000 churn.
+  // Plaintext frames cost a little bandwidth and are transparent to normal
+  // browsers, so compression is not worth the device breakage.
+  private browserWss = new WebSocketServer({ noServer: true, perMessageDeflate: false })
   private channelSeq = 0
   private timer: NodeJS.Timeout | undefined
 
