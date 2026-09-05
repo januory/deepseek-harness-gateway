@@ -2,15 +2,21 @@
 //
 // - GET    /gw/version          local state only (no network): repo/branch/remote/HEAD/dirty
 // - POST   /gw/version/check    `git fetch origin` then count commits behind/ahead + list them
-// - POST   /gw/version/update   `git pull --ff-only origin <branch>` then reload the gateway
+// - POST   /gw/version/update   `git pull --ff-only origin <branch>`, spawn the
+//                               build command detached, then reload the gateway
 //
 // Reload strategy: in dev the gateway runs under `tsx watch`, which restarts itself
 // on changed files (so a pull that touches apps/gateway/src/*.ts is already a hot
 // reload). When running compiled JS (`node dist/main.js`) we re-exec the same entry
 // as a detached child and exit, relying on that self-spawn as the supervisor.
+//
+// The build command runs DETACHED from the gateway (see spawnBuildCommand) so that
+// `tsx watch`'s reload — triggered by the same pull touching watched files — never
+// force-kills a build that is still awaiting inside the request handler.
 
-import { exec, execFile, spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { FastifyInstance } from 'fastify'
@@ -199,18 +205,30 @@ async function applyUpdate(repo: string): Promise<{ from: string; to: string; pu
   return { from: before, to: after, pulled }
 }
 
-/** Run an operator-configured build command after a successful pull (e.g. `pnpm -r build` in the container). */
-function runBuildCommand(repo: string, cmd: string, timeoutMs = 300_000): Promise<void> {
-  return new Promise((resolve, reject) => {
-    exec(cmd, { cwd: repo, timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
-      if (err) {
-        const msg = (stderr || stdout || '').trim() || (err as Error).message
-        reject(new Error('build failed: ' + msg))
-        return
-      }
-      resolve()
-    })
+/**
+ * Spawn an operator-configured build command (e.g. `pnpm -r build`) detached from
+ * the gateway process, after a successful pull.
+ *
+ * Detached + unref'd so the build survives a gateway reload and never blocks
+ * graceful shutdown: `tsx watch` restarts the gateway the instant the pull touches
+ * a watched .ts file, and a build awaited inside the request handler would keep
+ * `app.close()` open until tsx force-kills the process mid-build. The build keeps
+ * running on its own; the portal keeps serving the previous dist until it finishes
+ * (the web build uses `emptyOutDir: false`, so a failed build never deletes the
+ * last-good dist). Output is redirected to a log file so failures stay inspectable.
+ */
+function spawnBuildCommand(repo: string, cmd: string): void {
+  const logPath = process.env.DSH_GATEWAY_BUILD_LOG ?? join(tmpdir(), 'dsh-gateway-hot-update-build.log')
+  // Shell redirect so the detached child's stdout/stderr survive the parent and
+  // remain readable if the build fails. `( ... )` groups the operator command so
+  // `&&`-chained build commands are still captured as a whole.
+  const wrapped = `( ${cmd} ) >> "${logPath}" 2>&1`
+  const child = spawn('sh', ['-c', wrapped], {
+    cwd: repo,
+    detached: true,
+    stdio: 'ignore',
   })
+  child.unref()
 }
 
 /** `watch` when tsx runs our .ts entry (it reloads on file change); `restart` for compiled JS. */
@@ -266,8 +284,8 @@ export async function registerUpdater(app: FastifyInstance, auth: Auth, store: I
 
       const buildCmd = process.env.DSH_GATEWAY_BUILD_CMD
       if (buildCmd) {
-        log.info('[updater] running build command: ' + buildCmd)
-        await runBuildCommand(repo, buildCmd)
+        log.info('[updater] spawning detached build command: ' + buildCmd)
+        spawnBuildCommand(repo, buildCmd)
       }
 
       const reload = reloadStrategy()
