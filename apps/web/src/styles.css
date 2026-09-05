@@ -520,9 +520,9 @@ h3 {
 }
 
 .login-brand__logo {
-  width: 64px;
-  height: 64px;
-  filter: drop-shadow(0 4px 10px rgba(77, 107, 254, 0.25));
+  width: 60px;
+  height: 60px;
+  filter: drop-shadow(0 6px 14px rgba(16, 26, 46, 0.35));
 }
 
 .login-title {
