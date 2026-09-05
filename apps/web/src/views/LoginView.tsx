@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api'
 import type { PublicUser } from '../types'
-import whaleTile from '../assets/whale-tile.svg'
+import whaleMark from '../assets/whale-mark.svg'
 
 const GITHUB_URL = 'https://github.com/januory/deepseek-harness-gateway'
 
@@ -37,7 +37,7 @@ export function LoginView({ onLogin }: { onLogin: (u: PublicUser) => void }) {
     <div className="login-wrap">
       <form className="login-card" onSubmit={submit} noValidate>
         <div className="login-brand">
-          <img className="login-brand__logo" src={whaleTile} alt="" width={56} height={56} />
+          <img className="login-brand__logo" src={whaleMark} alt="" width={64} height={64} />
           <h1 className="login-title">deepseek-harness-gateway</h1>
           <p className="login-sub">受管网关路由器 · 登录控制台</p>
         </div>
