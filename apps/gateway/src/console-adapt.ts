@@ -192,6 +192,40 @@ const ADAPT_JS = `
       }
     } catch (e) {}
   }
+  // ---- WebKit/Firefox Function.prototype.toString normalization: the dsh
+  // client validates "plain object/array" by EXACT-matching
+  //   Function.prototype.toString.call(Object|Array)
+  // against V8's compact "function X() { [native code] }". WebKit (iOS Safari
+  // and Chrome/CriOS) and Firefox render native code as
+  //   "function X() {\n    [native code]\n}"
+  // so the exact match fails, snapshotJsonValue rejects every assistant-stream
+  // chunk, the session event-feed subscriber throws, and the whole conversation
+  // renders zero message rows on iOS. Normalize the native form to V8's exact
+  // form so the check passes on every engine. ----
+  if (typeof Function !== 'undefined' && Function.prototype && Function.prototype.toString) {
+    try {
+      var origFunctionToString = Function.prototype.toString
+      var functionToStringAlreadyCompact = false
+      try { functionToStringAlreadyCompact = origFunctionToString.call(Object) === 'function Object() { [native code] }' } catch (e) {}
+      if (!functionToStringAlreadyCompact) {
+        Function.prototype.toString = function () {
+          var text = origFunctionToString.call(this)
+          // Only rewrite genuine native functions (whose source carries the
+          // "[native code]" marker); user code passes through untouched.
+          if (typeof text === 'string' && text.indexOf('[native code]') !== -1) {
+            var prefix = 'function '
+            if (text.slice(0, prefix.length) === prefix) {
+              var brace = text.indexOf(' {')
+              if (brace !== -1) {
+                return 'function ' + text.slice(prefix.length, brace) + ' { [native code] }'
+              }
+            }
+          }
+          return text
+        }
+      }
+    } catch (e) {}
+  }
 
   // ---- boot/JS-error probe: report to the gateway so device-only failures
   // (e.g. a vendor browser engine crashing early in the console boot) become
