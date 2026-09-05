@@ -1,12 +1,9 @@
 # 手动发布 dsh-gateway-agent 插件到 npm（发布包名 @januory/dsh-gateway-agent）。
 #
-# 版本号直接取自 plugins/dsh-gateway-agent/package.json —— 发版前先在 main 上提交改好的 version。
+# 仅 npm 发布，不打 git tag、不建 GitHub Release。
 #   1. 安装依赖（ws）
 #   2. 跑单元测试（plain JS，框架无关）
-#   3. 校验 v<version> tag 尚未存在（防止重复发布）
-#   4. npm publish（provenance，scope 包默认私有，需 --access public）
-#   5. 打 v<version> tag 并推送
-#   6. 用 --generate-notes 创建 GitHub Release
+#   3. npm publish（provenance，scope 包默认私有，需 --access public）
 #
 # 前提：仓库 Secrets 中配置 NPM_TOKEN（npm automation token 或带 publish 权限的 granular token）。
 
@@ -16,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write # push tag、创建 GitHub Release
+  contents: read
   id-token: write # npm publish provenance（npmjs 公开包）
 
 concurrency:
@@ -47,28 +44,7 @@ jobs:
       - name: Run unit tests
         run: npm test
 
-      - name: Read version and guard duplicate release
-        id: version
-        run: |
-          version="$(node -p "require('./package.json').version")"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=v$version" >> "$GITHUB_OUTPUT"
-          if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
-            echo "::error::v$version 已发布过（tag 已存在）；请先在 package.json 中把 version 改成新版本并提交，再重新触发"
-            exit 1
-          fi
-
       - name: Publish to npm
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Create and push tag
-        run: |
-          git tag "v${{ steps.version.outputs.version }}"
-          git push origin "refs/tags/v${{ steps.version.outputs.version }}"
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ steps.version.outputs.tag }}" --generate-notes
