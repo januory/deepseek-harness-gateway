@@ -19,24 +19,6 @@ describe('InMemoryStore', () => {
     expect(await store.listMachines()).toHaveLength(1)
   })
 
-  it('acquires a seat only once until released', async () => {
-    const store = new InMemoryStore()
-    const seat = {
-      machineId: 'm1',
-      userId: 'u1',
-      sessionRef: 's1',
-      acquiredAt: '2026-09-01T00:00:00Z',
-      ttlMs: 60_000,
-    }
-    expect(await store.acquireSeat(seat)).toBe(true)
-    // Same user re-acquiring renews their own seat.
-    expect(await store.acquireSeat(seat)).toBe(true)
-    // A different user is refused (single operator per machine).
-    expect(await store.acquireSeat({ ...seat, userId: 'u2' })).toBe(false)
-    await store.releaseSeat('m1', 'u1')
-    expect(await store.acquireSeat({ ...seat, userId: 'u2' })).toBe(true)
-  })
-
   it('filters audit by machine', async () => {
     const store = new InMemoryStore()
     await store.appendAudit({ ts: '2026-09-01T00:00:00Z', actor: 'admin', machineId: 'm1', action: 'approve', result: 'ok' })

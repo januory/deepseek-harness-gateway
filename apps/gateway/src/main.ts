@@ -235,7 +235,7 @@ if (webDist) {
 
 // /agent — outbound wss from dsh-gateway-agent (onboarding + heartbeat).
 // /console/:machineId/* and the /* fallback — browser console WS, fail-closed
-// behind the same assignment+seat check as the HTTP relay.
+// behind the same assignment check as the HTTP relay.
 const wss = new WebSocketServer({ noServer: true })
 
 async function handleBrowserUpgrade(req: any, socket: any, head: Buffer): Promise<void> {

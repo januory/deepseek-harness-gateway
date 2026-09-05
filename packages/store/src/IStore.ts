@@ -6,7 +6,6 @@ import type {
   Machine,
   Assignment,
   PairingCode,
-  Seat,
   AuditEvent,
 } from './domain.js'
 
@@ -21,7 +20,7 @@ export interface IStore {
   upsertMachine(m: Machine): Promise<void>
   getMachine(id: string): Promise<Machine | undefined>
   listMachines(): Promise<Machine[]>
-  /** Delete a machine record; cascades assignments/seats (audit is retained). */
+  /** Delete a machine record; cascades assignments (audit is retained). */
   deleteMachine(id: string): Promise<void>
 
   addAssignment(a: Assignment): Promise<void>
@@ -33,10 +32,6 @@ export interface IStore {
   getPairingCodeByHash(codeHash: string): Promise<PairingCode | undefined>
   consumePairingCode(codeHash: string, machineId: string): Promise<void>
   listPairingCodes(): Promise<PairingCode[]>
-
-  acquireSeat(seat: Seat): Promise<boolean>
-  releaseSeat(machineId: string, userId: string): Promise<void>
-  getSeat(machineId: string): Promise<Seat | undefined>
 
   appendAudit(e: AuditEvent): Promise<void>
   queryAudit(opts?: { since?: string; machineId?: string }): Promise<AuditEvent[]>

@@ -1,7 +1,7 @@
 // Console HTTP relay: /console/:machineId/* → node → local dsh web (buffered).
-// Absolute dsh paths (/api, /plugins, /assets, …) are served by a single-node
-// passthrough catch-all. Both paths are fail-closed behind the console
-// authorization check (assignment + seat, ADR-0004/0005).
+// Absolute dsh paths (/api, /plugins, /assets, …) are served by a passthrough
+// catch-all. Both paths are fail-closed behind the console authorization check
+// (assignment, ADR-0004).
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { IStore } from 'dsh-gateway-store'

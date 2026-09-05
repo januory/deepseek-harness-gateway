@@ -54,26 +54,18 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
   }
 
   function openConsole(m: MachineView) {
-    void run(m, async () => {
-      await api.acquireSeat(m.id)
-      onOpenConsole(m)
-    })
+    // Assignment is the permission (no console-seat acquire step).
+    onOpenConsole(m)
   }
 
   function renderActions(m: MachineView) {
-    const mySeat = m.seat?.userId === me.id
     return (
       <>
         {m.status === 'approved' && (
           <>
-            <Button variant="primary" disabled={busy === m.id} onClick={() => openConsole(m)}>
+            <Button variant="primary" onClick={() => openConsole(m)}>
               控制台
             </Button>
-            {mySeat && (
-              <Button variant="default" disabled={busy === m.id} onClick={() => void run(m, () => api.releaseSeat(m.id))}>
-                释放
-              </Button>
-            )}
           </>
         )}
         {isAdmin && m.status === 'pending' && (
@@ -92,18 +84,6 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
           </Button>
         )}
       </>
-    )
-  }
-
-  function seatLabel(m: MachineView) {
-    const mySeat = m.seat?.userId === me.id
-    return m.seat ? (
-      <>
-        {m.seat.userId}
-        {mySeat ? '（你）' : ''}
-      </>
-    ) : (
-      '空闲'
     )
   }
 
@@ -152,7 +132,6 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
                     <th>机器</th>
                     <th>版本</th>
                     <th>最后心跳</th>
-                    <th>席位</th>
                     <th style={{ textAlign: 'right' }}>操作</th>
                   </tr>
                 </thead>
@@ -173,7 +152,6 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
                       </td>
                       <td className="mono muted">{m.dshVersion || '—'}</td>
                       <td className="muted">{formatTime(m.lastHeartbeatAt)}</td>
-                      <td className="muted">{seatLabel(m)}</td>
                       <td className="cell-actions">{renderActions(m)}</td>
                     </tr>
                   ))}
@@ -198,7 +176,6 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
                   <div className="machine-card__meta">
                     <span>版本 {m.dshVersion || '—'}</span>
                     <span>最后心跳 {formatTime(m.lastHeartbeatAt)}</span>
-                    <span>席位 {seatLabel(m)}</span>
                   </div>
                   <div className="machine-card__actions">{renderActions(m)}</div>
                 </div>

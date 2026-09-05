@@ -37,14 +37,6 @@ export interface PairingCode {
   consumedBy?: string
 }
 
-export interface Seat {
-  machineId: string
-  userId: string
-  sessionRef: string
-  acquiredAt: string
-  ttlMs: number
-}
-
 export interface AuditEvent {
   ts: string
   actor: string

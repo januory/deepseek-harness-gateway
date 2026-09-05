@@ -1,6 +1,9 @@
-// Console relay authorization (ADR-0004/0005): every /console/:machineId/*
-// request (HTTP and WS upgrade) must be from an authenticated portal user who
-// is authorized for that machine AND holds its console seat. Fail-closed.
+// Console relay authorization (ADR-0004, revised): every /console/:machineId/*
+// request (HTTP and WS upgrade) must be from an authenticated portal user who is
+// authorized for that machine — a regular user must be assigned to it; an admin
+// reaches any approved machine. Fail-closed. The console seat (single-operator
+// mutex, ADR-0005) is intentionally NOT enforced: assignment is the permission,
+// so multiple assigned operators may control a machine concurrently.
 
 import type { IStore, User } from 'dsh-gateway-store'
 
@@ -10,8 +13,6 @@ export interface AuthzResult {
   error?: string
   heldBy?: string
 }
-
-export const SEAT_TTL_MS = 8 * 60 * 60 * 1000 // 8h console seat lease
 
 export async function authorizeConsole(
   store: IStore,
@@ -28,17 +29,6 @@ export async function authorizeConsole(
   if (user.role === 'user') {
     const assigned = (await store.listAssignmentsForUser(user.id)).some((a) => a.machineId === machineId)
     if (!assigned) return { allowed: false, status: 403, error: 'not assigned to this machine' }
-  }
-
-  // Console seat (single operator per machine, ADR-0005).
-  const seat = await store.getSeat(machineId)
-  if (!seat) return { allowed: false, status: 409, error: 'no console seat — acquire it first' }
-  if (new Date(seat.acquiredAt).getTime() + seat.ttlMs < Date.now()) {
-    await store.releaseSeat(machineId, seat.userId)
-    return { allowed: false, status: 409, error: 'console seat expired — re-acquire' }
-  }
-  if (seat.userId !== user.id) {
-    return { allowed: false, status: 409, error: 'seat held by another operator', heldBy: seat.userId }
   }
 
   return { allowed: true, status: 200 }

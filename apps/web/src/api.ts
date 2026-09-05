@@ -8,7 +8,6 @@ import type {
   PairingCodeView,
   PublicUser,
   Role,
-  SeatView,
   UpdateResult,
   UpdateStatus,
   UserView,
@@ -95,15 +94,6 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ ttlMs }),
     }),
-
-  // ---- console seats ---------------------------------------------------------------
-  acquireSeat: (machineId: string) =>
-    req<{ ok: boolean; seat: { machineId: string; userId: string; sessionRef: string } }>(
-      '/gw/seats/' + machineId + '/acquire',
-      { method: 'POST' },
-    ),
-  releaseSeat: (machineId: string) => req<{ ok: boolean }>('/gw/seats/' + machineId + '/release', { method: 'POST' }),
-  seat: (machineId: string) => req<{ seat: SeatView | null }>('/gw/seats/' + machineId),
 
   // ---- audit -------------------------------------------------------------------------
   audit: (filters: { machineId?: string; since?: string } = {}) =>

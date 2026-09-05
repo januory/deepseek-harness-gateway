@@ -5,7 +5,6 @@ export type {
   Machine,
   Assignment,
   PairingCode,
-  Seat,
   AuditEvent,
 } from './domain.js'
 export type { IStore } from './IStore.js'

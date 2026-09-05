@@ -2,8 +2,6 @@
 //
 // - Persistent source data: users / machines / assignments / pairing_codes /
 //   audit_events — transactional, with foreign keys.
-// - The console-seat mutex is kept in process memory (single-writer v1); the
-//   `seats` table is written through as an audit helper only.
 // - Relay payloads (HTTP/WS frames) are never persisted here.
 
 import { existsSync } from 'node:fs'
@@ -19,7 +17,6 @@ import type {
   Machine,
   Assignment,
   PairingCode,
-  Seat,
   AuditEvent,
   Role,
   MachineStatus,
@@ -66,22 +63,9 @@ function machineFromRow(r: typeof schema.machines.$inferSelect): Machine {
   }
 }
 
-function seatRow(s: Seat) {
-  return {
-    machineId: s.machineId,
-    userId: s.userId,
-    sessionRef: s.sessionRef,
-    acquiredAt: s.acquiredAt,
-    ttlMs: s.ttlMs,
-  }
-}
-
 export class SqliteStore implements IStore {
   private raw!: Database.Database
   private db!: DB
-  // In-memory console-seat mutex (ADR-0007 §4): keyed by machineId — one
-  // operator per machine (ADR-0005). Self-renewal by the same user is allowed.
-  private seats = new Map<string, Seat>()
 
   constructor(private readonly options: SqliteStoreOptions) {}
 
@@ -103,7 +87,6 @@ export class SqliteStore implements IStore {
   }
 
   async close(): Promise<void> {
-    this.seats.clear()
     this.raw?.close()
   }
 
@@ -158,8 +141,7 @@ export class SqliteStore implements IStore {
   }
 
   async deleteMachine(id: string): Promise<void> {
-    this.seats.delete(id)
-    // FK ON DELETE CASCADE removes assignments + the seats audit row.
+    // FK ON DELETE CASCADE removes assignments.
     await this.db.delete(schema.machines).where(eq(schema.machines.id, id))
   }
 
@@ -234,34 +216,6 @@ export class SqliteStore implements IStore {
       expiresAt: r.expiresAt,
       consumedBy: r.consumedBy ?? undefined,
     }))
-  }
-
-  async acquireSeat(seat: Seat): Promise<boolean> {
-    const existing = this.seats.get(seat.machineId)
-    if (existing && existing.userId !== seat.userId) return false
-    this.seats.set(seat.machineId, seat)
-    const row = seatRow(seat)
-    await this.db
-      .insert(schema.seats)
-      .values(row)
-      .onConflictDoUpdate({
-        target: schema.seats.machineId,
-        set: { userId: row.userId, sessionRef: row.sessionRef, acquiredAt: row.acquiredAt, ttlMs: row.ttlMs },
-      })
-    return true
-  }
-
-  async releaseSeat(machineId: string, userId: string): Promise<void> {
-    const existing = this.seats.get(machineId)
-    if (existing && existing.userId === userId) this.seats.delete(machineId)
-    await this.db.delete(schema.seats).where(eq(schema.seats.machineId, machineId))
-  }
-
-  async getSeat(machineId: string): Promise<Seat | undefined> {
-    const r = await this.db.select().from(schema.seats).where(eq(schema.seats.machineId, machineId)).get()
-    return r
-      ? { machineId: r.machineId, userId: r.userId, sessionRef: r.sessionRef, acquiredAt: r.acquiredAt, ttlMs: r.ttlMs }
-      : undefined
   }
 
   async appendAudit(e: AuditEvent): Promise<void> {

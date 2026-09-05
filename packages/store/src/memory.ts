@@ -5,7 +5,6 @@ import type {
   Machine,
   Assignment,
   PairingCode,
-  Seat,
   AuditEvent,
 } from './domain.js'
 import type { IStore } from './IStore.js'
@@ -15,7 +14,6 @@ export class InMemoryStore implements IStore {
   private machines = new Map<string, Machine>()
   private assignments = new Map<string, Assignment>() // `${machineId}:${userId}`
   private pairingCodes = new Map<string, PairingCode>() // by codeHash
-  private seats = new Map<string, Seat>() // by machineId (single operator per machine)
   private audit: AuditEvent[] = []
 
   async open(): Promise<void> {}
@@ -45,7 +43,6 @@ export class InMemoryStore implements IStore {
     for (const key of [...this.assignments.keys()]) {
       if (key.startsWith(`${id}:`)) this.assignments.delete(key)
     }
-    this.seats.delete(id)
   }
 
   async addAssignment(a: Assignment): Promise<void> {
@@ -76,20 +73,6 @@ export class InMemoryStore implements IStore {
   }
   async listPairingCodes(): Promise<PairingCode[]> {
     return [...this.pairingCodes.values()]
-  }
-
-  async acquireSeat(seat: Seat): Promise<boolean> {
-    const existing = this.seats.get(seat.machineId)
-    if (existing && existing.userId !== seat.userId) return false
-    this.seats.set(seat.machineId, seat)
-    return true
-  }
-  async releaseSeat(machineId: string, userId: string): Promise<void> {
-    const existing = this.seats.get(machineId)
-    if (existing && existing.userId === userId) this.seats.delete(machineId)
-  }
-  async getSeat(machineId: string): Promise<Seat | undefined> {
-    return this.seats.get(machineId)
   }
 
   async appendAudit(e: AuditEvent): Promise<void> {

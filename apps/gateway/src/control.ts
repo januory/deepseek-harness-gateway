@@ -1,14 +1,15 @@
-// Control-plane REST API (ADR-0004/0005/0008): users, machines
-// (approve/revoke), assignments, pairing codes, console seats, and audit.
-// All routes are under /gw/* and are protected by the RBAC guard from auth.ts.
+// Control-plane REST API (ADR-0004/0008): users, machines (approve/revoke),
+// assignments, pairing codes, and audit. All routes are under /gw/* and are
+// protected by the RBAC guard from auth.ts. The console seat (ADR-0005
+// single-operator mutex) is not part of the permission model — assignment is
+// the permission, so a machine list carries no seat field and there are no
+// seat acquire/release endpoints.
 
-import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import type { IStore, Role, User, Machine } from 'dsh-gateway-store'
 import type { NodeRegistry } from './nodes.js'
 import type { Auth } from './auth.js'
 import { hashPassword, verifyPassword } from './auth.js'
-import { SEAT_TTL_MS } from './authz.js'
 
 /** Roles that can manage machines/users/assignments/audit. */
 const ADMIN_ROLES: Role[] = ['admin', 'system-admin']
@@ -20,7 +21,6 @@ function isAdmin(user: User): boolean {
 async function enrichMachines(store: IStore, registry: NodeRegistry, machines: Machine[]) {
   const out = []
   for (const m of machines) {
-    const seat = await store.getSeat(m.id)
     out.push({
       id: m.id,
       name: m.name,
@@ -30,7 +30,6 @@ async function enrichMachines(store: IStore, registry: NodeRegistry, machines: M
       lastHeartbeatAt: m.lastHeartbeatAt,
       createdAt: m.createdAt,
       online: registry.isConnected(m.id),
-      seat: seat ? { userId: seat.userId, acquiredAt: seat.acquiredAt } : null,
     })
   }
   return out
@@ -146,41 +145,6 @@ export async function registerControl(app: FastifyInstance, store: IStore, regis
   app.get('/gw/pairing-codes', { preHandler: requireRole(...ADMIN_ROLES) }, async () => {
     const codes = await store.listPairingCodes()
     return { codes: codes.map((c) => ({ machineId: c.machineId, consumedBy: c.consumedBy, expiresAt: c.expiresAt })) }
-  })
-
-  // ---- console seats -----------------------------------------------------------
-  app.post('/gw/seats/:machineId/acquire', { preHandler: requireRole() }, async (req, reply) => {
-    const user = req.user!
-    const machineId = (req.params as any).machineId as string
-    const m = await store.getMachine(machineId)
-    if (!m || m.status !== 'approved') return reply.code(404).send({ error: 'machine not approved' })
-
-    if (user.role === 'user') {
-      const assigned = (await store.listAssignmentsForUser(user.id)).some((a) => a.machineId === machineId)
-      if (!assigned) return reply.code(403).send({ error: 'not assigned to this machine' })
-    }
-
-    const seat = { machineId, userId: user.id, sessionRef: randomUUID(), acquiredAt: new Date().toISOString(), ttlMs: SEAT_TTL_MS }
-    const ok = await store.acquireSeat(seat)
-    if (!ok) {
-      const held = await store.getSeat(machineId)
-      return reply.code(409).send({ error: 'seat already held', heldBy: held?.userId })
-    }
-    await store.appendAudit({ ts: seat.acquiredAt, actor: user.id, machineId, action: 'seat_acquire', result: 'ok' })
-    return { ok: true, seat: { machineId, userId: user.id, sessionRef: seat.sessionRef } }
-  })
-
-  app.post('/gw/seats/:machineId/release', { preHandler: requireRole() }, async (req) => {
-    const user = req.user!
-    const machineId = (req.params as any).machineId as string
-    await store.releaseSeat(machineId, user.id)
-    return { ok: true }
-  })
-
-  app.get('/gw/seats/:machineId', { preHandler: requireRole() }, async (req) => {
-    const machineId = (req.params as any).machineId as string
-    const seat = await store.getSeat(machineId)
-    return { seat: seat ? { machineId, userId: seat.userId, acquiredAt: seat.acquiredAt } : null }
   })
 
   // ---- audit --------------------------------------------------------------------

@@ -2,9 +2,9 @@
 // Single source of truth for the persistent tables; migrations are generated
 // with drizzle-kit (see drizzle.config.ts) and applied in SqliteStore.open().
 //
-// Live state (node sockets, heartbeats, leases, the console-seat mutex) stays
-// in process memory — see ADR-0007 §3/§4. The `seats` table is a durable
-// audit helper ("who last held which machine"), NOT the mutex.
+// Live state (node sockets, heartbeats, leases) stays in process memory — see
+// ADR-0007 §3/§4. The console seat was removed: assignment is the permission,
+// so there is no `seats` table.
 
 import { sqliteTable, text, integer, primaryKey } from 'drizzle-orm/sqlite-core'
 
@@ -44,19 +44,6 @@ export const pairingCodes = sqliteTable('pairing_codes', {
   machineId: text('machine_id'),
   expiresAt: text('expires_at').notNull(),
   consumedBy: text('consumed_by'),
-})
-
-// One row per machine = its current (or last) console-seat holder (audit helper).
-export const seats = sqliteTable('seats', {
-  machineId: text('machine_id')
-    .primaryKey()
-    .references(() => machines.id, { onDelete: 'cascade' }),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  sessionRef: text('session_ref').notNull(),
-  acquiredAt: text('acquired_at').notNull(),
-  ttlMs: integer('ttl_ms').notNull(),
 })
 
 export const auditEvents = sqliteTable('audit_events', {

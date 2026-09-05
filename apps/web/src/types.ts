@@ -14,11 +14,6 @@ export interface UserView {
 
 export type MachineStatus = 'pending' | 'approved' | 'revoked'
 
-export interface SeatView {
-  userId: string
-  acquiredAt: string
-}
-
 export interface MachineView {
   id: string
   name: string
@@ -28,7 +23,6 @@ export interface MachineView {
   lastHeartbeatAt?: string
   createdAt: string
   online: boolean
-  seat: SeatView | null
 }
 
 export interface Assignment {
