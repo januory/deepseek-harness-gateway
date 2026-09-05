@@ -9,7 +9,7 @@
 // 后加载的插件会改掉这里的值。必须用 IIFE 把顶层声明隔离在私有作用域内。
 
 ;(function () {
-var PACKAGE = 'dsh-gateway-agent'
+var PACKAGE = '@januory/dsh-gateway-agent'
 var NAMESPACE = 'gatewayAgent'
 
 var JSON_CODEC = Object.freeze({
