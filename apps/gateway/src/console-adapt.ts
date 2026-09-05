@@ -107,13 +107,23 @@ body.dsh-gw-mobile [class$="_railFish"] button,body.dsh-gw-mobile [class$="_pane
 /* Pin every column to an explicit track so the conversation always lands on
    the 1fr track regardless of the collapsed rail's computed position (the
    official rail can leave the grid flow on some cohorts, which would
-   auto-place the in-flow center into the zero-width first track). */
-body.dsh-gw-mobile [class$="_frame"][data-sidebar-collapsed]{grid-template-columns:56px minmax(0,1fr) 0 !important}
+   auto-place the in-flow center into the zero-width first track). dsh-web
+   (the iOS-verified reference) sets the collapsed sidebar track to 0 and
+   replaces the rail with its floating toggle, so the conversation gets the
+   full width; keep that. */
+body.dsh-gw-mobile [class$="_frame"][data-sidebar-collapsed]{grid-template-columns:0 minmax(0,1fr) 0 !important}
 body.dsh-gw-mobile [class$="_frame"][data-sidebar-collapsed] [class$="_sidebarCol"]{grid-column:1/2}
 body.dsh-gw-mobile [class$="_frame"][data-sidebar-collapsed] [class$="_centerCol"]{grid-column:2/3}
 body.dsh-gw-mobile [class$="_frame"][data-sidebar-collapsed] [class$="_detailsCol"]{grid-column:3/4}
 /* The right-hand details column has no room on a phone; hide it entirely. */
 body.dsh-gw-mobile [class$="_detailsCol"]{display:none !important}
+/* On touch, taps leave :hover/:focus stuck, so official Tooltip bubbles stay
+   visible on mobile — hide them (user message bubbles have no tooltip role). */
+body.dsh-gw-mobile [class*="_bubble"][role="tooltip"]{display:none}
+/* PlanReviewPanel shares the _frame/_card suffixes and overflows a narrow
+   phone; pin it to the viewport with border-box and cap its height. */
+body.dsh-gw-mobile [class$="_composerSeat"] [class$="_frame"]{box-sizing:border-box;width:100%;max-width:100%;padding-left:12px;padding-right:12px;height:auto;max-height:calc(100dvh - 96px);align-items:flex-start;overflow-y:auto}
+body.dsh-gw-mobile [class$="_composerSeat"] [class$="_frame"] [class$="_card"]{max-width:none;width:100%}
 /* Message list breathing room on narrow screens. */
 body.dsh-gw-mobile [class$="_scroll"]{padding:8px 10px}
 /* 16px inputs prevent iOS focus zoom. */
