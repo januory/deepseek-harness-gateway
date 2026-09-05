@@ -39,7 +39,7 @@ export function LoginView({ onLogin }: { onLogin: (u: PublicUser) => void }) {
         <div className="login-brand">
           <img className="login-brand__logo" src={whaleMark} alt="" width={64} height={64} />
           <h1 className="login-title">deepseek-harness-gateway</h1>
-          <p className="login-sub">受管网关路由器 · 登录控制台</p>
+          <p className="login-sub">登录控制台</p>
         </div>
 
         <label className="login-field">
@@ -86,7 +86,7 @@ export function LoginView({ onLogin }: { onLogin: (u: PublicUser) => void }) {
         </a>
       </form>
       <div className="login-foot">
-        deepseek-harness-gateway · 多租户受管网关路由器
+        deepseek-harness-gateway · Deepseek-Harness 网关
       </div>
     </div>
   )
