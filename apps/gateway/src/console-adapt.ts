@@ -220,10 +220,24 @@ const ADAPT_JS = `
     var b = document.body
     var sample = ''
     try { sample = b ? b.innerText.replace(/\s+/g, ' ').slice(0, 120) : '' } catch (e) {}
+    var geom = ''
+    try {
+      var f = document.querySelector('[class$="_frame"]')
+      var c = document.querySelector('[class$="_centerCol"]')
+      var s = document.querySelector('[class$="_scroll"], [class$="_scrollBody"]')
+      var fr = f ? Math.round(f.getBoundingClientRect().height) : -1
+      var cr = c ? Math.round(c.getBoundingClientRect().height) : -1
+      var sr = s ? Math.round(s.getBoundingClientRect().height) : -1
+      var bubbles = document.querySelectorAll('[class$="_bubble"]').length
+      var early = /加载更早|Load earlier/.test(sample)
+      geom = ' winH=' + window.innerHeight +
+        ' frameH=' + fr + ' centerH=' + cr + ' scrollH=' + sr +
+        ' bubbles=' + bubbles + ' earlyOnly=' + early
+    } catch (e) { geom = ' geomErr' }
     return 'frame=' + (!!document.querySelector('[class$="_frame"]')) +
       ' adapt=' + (b ? b.classList.contains(ACTIVE) : 'n/a') +
       ' connErr=' + /连接异常|Connection issue/.test(sample) +
-      ' ready=' + document.readyState + ' sample=' + sample
+      ' ready=' + document.readyState + geom + ' sample=' + sample
   }
   function bootPost () {
     try { postDiag('boot', 'adapt script ran; ' + pageState()) } catch (e) {}
