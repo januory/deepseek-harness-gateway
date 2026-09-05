@@ -159,6 +159,17 @@ body.dsh-gw-mobile [class$="_panel"]>[class$="_content"] [class$="_options"]{box
 body.dsh-gw-mobile [class$="_options"] *{box-sizing:border-box!important;max-width:100%!important;min-width:0!important}
 body.dsh-gw-mobile [class$="_panel"] [class$="_section"],body.dsh-gw-mobile [class$="_panel"] [class$="_row"]{width:100%!important;min-width:0!important}
 body.dsh-gw-mobile [class$="_panel"] [class$="_rowText"],body.dsh-gw-mobile [class$="_panel"] [class$="_desc"]{min-width:0!important}
+/* The General tab's font-size row (字号大小): the generic [class$="_options"] *
+   min-width:0 — needed so long labels wrap inside the 360px-capped panel — also
+   overrides the theme stepper's own min-width:72px / height:36px and the value
+   cell's min-width:18px, collapsing the pill into a tiny sliver on phones.
+   Restore the control's intrinsic size (the selectors below carry higher
+   specificity than the * rule, so they win the !important tie) and reveal its
+   up/down arrows (no hover on touch), so the setting stays readable and usable
+   instead of a tiny clump. */
+body.dsh-gw-mobile [class$="_panel"] [class$="_stepper"]{min-width:72px!important;height:36px!important}
+body.dsh-gw-mobile [class$="_panel"] [class$="_stepper"] [class$="_value"]{min-width:18px!important}
+body.dsh-gw-mobile [class$="_panel"] [class$="_stepper"] [class$="_arrows"]{opacity:1!important}
 /* Settings section bodies (the tab sub-pages) still lay out for the desktop
    ~800px pane; inside a 360px capped panel their own two-column grids and long
    headline/action rows crush. Give the scroll area a modest inset (the 4px
