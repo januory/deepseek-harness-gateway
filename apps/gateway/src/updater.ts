@@ -232,13 +232,13 @@ function spawnBuildCommand(repo: string, cmd: string): void {
 }
 
 /** Exit so the entrypoint supervisor loop restarts the gateway on the new HEAD. */
-function scheduleReload(app: FastifyInstance): void {
-  setTimeout(async () => {
-    try {
-      await app.close() // flush pending responses + audit writes before exit
-    } catch {
-      /* ignore */
-    }
+function scheduleReload(): void {
+  setTimeout(() => {
+    // Exit unconditionally. `app.close()` can hang on the console's live
+    // WebSocket / HTTP keep-alive connections, which closes the listener but
+    // leaves the process alive — a permanent 502 that the supervisor loop can
+    // never recover. The audit is already flushed before this runs, and the OS
+    // releases the port the instant the process dies, so the loop rebinds.
     process.exit(0)
   }, 500)
 }
@@ -289,7 +289,7 @@ export async function registerUpdater(app: FastifyInstance, auth: Auth, store: I
       // Deterministic reload: exit and let the entrypoint supervisor loop
       // restart the gateway on the new HEAD. Never rely on a file watcher.
       log.info('[updater] update applied — exiting for deterministic supervised reload')
-      scheduleReload(app)
+      scheduleReload()
 
       return { ok: true, ...res, reload: 'supervised' } satisfies UpdateResult
     } catch (e) {
