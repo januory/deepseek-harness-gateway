@@ -154,14 +154,18 @@ const ADAPT_JS = `
         detail: String(detail == null ? '' : detail).slice(0, 500),
         href: String(location.href || '').slice(0, 200)
       })
+      if (window.fetch && window.fetch.bind) {
+        try { window.fetch(DIAG, { method: 'POST', headers: { 'content-type': 'application/json' }, body: payload, keepalive: true }) } catch (e) {}
+        return
+      }
       if (navigator.sendBeacon) {
         navigator.sendBeacon(DIAG, new Blob([payload], { type: 'application/json' }))
-      } else {
-        var x = new XMLHttpRequest()
-        x.open('POST', DIAG, true)
-        x.setRequestHeader('content-type', 'application/json')
-        x.send(payload)
+        return
       }
+      var x = new XMLHttpRequest()
+      x.open('POST', DIAG, true)
+      x.setRequestHeader('content-type', 'application/json')
+      x.send(payload)
     } catch (e) {}
   }
   window.addEventListener('error', function (e) {
@@ -171,9 +175,23 @@ const ADAPT_JS = `
     var r = e && e.reason
     postDiag('rejection', r && r.message ? r.message : String(r))
   }, true)
-  try {
-    postDiag('boot', 'adapt script ran; readyState=' + document.readyState)
-  } catch (e) {}
+  function pageState () {
+    var sample = ''
+    try { sample = document.body ? document.body.innerText.replace(/\s+/g, ' ').slice(0, 120) : '' } catch (e) {}
+    return 'frame=' + (!!document.querySelector('[class$="_frame"]')) +
+      ' adapt=' + document.body.classList.contains(ACTIVE) +
+      ' connErr=' + /连接异常|Connection issue/.test(sample) +
+      ' ready=' + document.readyState + ' sample=' + sample
+  }
+  postDiag('boot', 'adapt script ran; ' + pageState())
+  var diagT = 0
+  function diagLoop () {
+    diagT += 1
+    try { postDiag('tick' + diagT, pageState()) } catch (e) {}
+  }
+  window.setTimeout(diagLoop, 3000)
+  window.setTimeout(diagLoop, 10000)
+  window.setTimeout(diagLoop, 20000)
   var ACTIVE = 'dsh-gw-mobile'
   var FAB_ID = 'dshGwMobileFab'
   var pill = null
