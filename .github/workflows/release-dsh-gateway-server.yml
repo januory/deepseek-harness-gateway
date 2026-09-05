@@ -1,0 +1,138 @@
+# 手动发布 dsh-gateway-server（网关服务器）到 npm。
+#
+# 版本号直接取自 apps/gateway/package.json —— 发版前先在 main 上提交改好的 version。
+#   1. 安装 pnpm + workspace 依赖
+#   2. 构建门户（apps/web → dist，供包内静态托管）
+#   3. 构建网关 bundle（esbuild 把 server + protocol + store 打成单文件 dist/cli.js，
+#      并把门户产物拷进 dist/portal），暴露 `dshgw` 命令
+#   4. 校验 v<version> tag 尚未存在（防止重复发布）
+#   5. npm publish（provenance）
+#   6. 打 v<version> tag 并推送
+#   7. 用 --generate-notes 创建 GitHub Release
+#
+# 前提：仓库 Secrets 中配置 NPM_TOKEN（npm automation token 或带 publish 权限的 granular token）。
+#
+# 安装发布的包后可直接用 `dshgw` 启动网关：
+#   npm install -g dsh-gateway-server && dshgw
+# 或
+#   npx dsh-gateway-server
+# （可用 DSH_GATEWAY_HOST / DSH_GATEWAY_PORT / DSH_GATEWAY_DB_PATH / DSH_GATEWAY_ADMIN_PASSWORD 等配置。）
+
+name: release-dsh-gateway-server
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write # push tag、创建 GitHub Release
+  id-token: write # npm publish provenance（npmjs 公开包）
+
+concurrency:
+  group: npm-release-dsh-gateway-server
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+
+      - name: Install pnpm
+        run: npm install -g pnpm@11.7.0
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build portal
+        run: pnpm --filter dsh-gateway-web build
+
+      - name: Build gateway bundle (dshgw)
+        run: pnpm --filter dsh-gateway-server build
+
+      - name: Read version and guard duplicate release
+        id: version
+        working-directory: apps/gateway
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
+            echo "::error::v$version 已发布过（tag 已存在）；请先在 apps/gateway/package.json 中把 version 改成新版本并提交，再重新触发"
+            exit 1
+          fi
+
+      - name: Prepare publish tarball
+        working-directory: apps/gateway
+        run: node scripts/publish-prep.mjs
+
+      - name: Publish to npm
+        working-directory: apps/gateway
+        run: npm publish .npm-publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create and push tag
+        run: |
+          git tag "v${{ steps.version.outputs.version }}"
+          git push origin "refs/tags/v${{ steps.version.outputs.version }}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ steps.version.outputs.tag }}" --generate-notes
+
+  # 同步发布 Docker 镜像（npm 发布成功后才会执行）。镜像以 latest + v<version> + commit hash 打标签。
+  docker-publish:
+    runs-on: ubuntu-latest
+    needs: release
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags / labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=v${{ needs.release.outputs.version }}
+            type=sha,prefix=,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

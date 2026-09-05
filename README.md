@@ -71,6 +71,33 @@ Build the portal so the gateway serves it statically at the root:
 pnpm --filter dsh-gateway-web build
 ```
 
+Install the gateway from npm (a prebuilt `dshgw` CLI that bundles the server + portal):
+
+```sh
+npm install -g dsh-gateway-server
+dshgw                              # http://127.0.0.1:3300/health
+```
+
+Runtime configuration — each setting is accepted as a `dshgw` CLI flag, an
+environment variable, or a built-in default (CLI flag > env var > default):
+
+| Environment variable | CLI flag | Default |
+| --- | --- | --- |
+| `DSH_GATEWAY_HOST` | `--host <addr>` | `127.0.0.1` |
+| `DSH_GATEWAY_PORT` | `--port <n>` | `3300` |
+| `DSH_GATEWAY_DB_PATH` | `--db <path>` | `./gateway.db` |
+| `DSH_GATEWAY_ADMIN_ID` | `--admin-id <id>` | `admin` |
+| `DSH_GATEWAY_ADMIN_PASSWORD` | `--admin-password <pw>` | `admin` |
+| `DSH_GATEWAY_PAIRING_CODES` | `--pairing-codes <a,b>` | *(none)* |
+| `DSH_GATEWAY_WEB_DIST` | `--web-dist <dir>` | *auto-detect* |
+
+```sh
+dshgw --host 0.0.0.0 --port 8080 --db ./gw.db --admin-id admin --admin-password secret --pairing-codes 'code1,code2'
+dshgw --help   # list every flag
+```
+
+Docker-only env vars (no CLI flag): `DSH_GATEWAY_BUILD_CMD` (default `pnpm -r build`), `DSH_GATEWAY_SRC_DIR` (default `/app/source`), `DSH_GATEWAY_PNPM_STORE` (default `/data/pnpm-store`).
+
 Install the agent plugin into a customer machine's dsh (web profile):
 
 ```sh

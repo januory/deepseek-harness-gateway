@@ -71,6 +71,32 @@ pnpm --filter dsh-gateway-web dev
 pnpm --filter dsh-gateway-web build
 ```
 
+从 npm 安装网关（一个预构建的 `dshgw` CLI，自带服务器 + 门户）：
+
+```sh
+npm install -g dsh-gateway-server
+dshgw                              # http://127.0.0.1:3300/health
+```
+
+运行配置——每个设置都可通过 `dshgw` 命令行参数、环境变量或内置默认值传入（优先级：CLI 参数 > 环境变量 > 默认值）：
+
+| 环境变量 | 命令行参数 | 默认值 |
+| --- | --- | --- |
+| `DSH_GATEWAY_HOST` | `--host <addr>` | `127.0.0.1` |
+| `DSH_GATEWAY_PORT` | `--port <n>` | `3300` |
+| `DSH_GATEWAY_DB_PATH` | `--db <path>` | `./gateway.db` |
+| `DSH_GATEWAY_ADMIN_ID` | `--admin-id <id>` | `admin` |
+| `DSH_GATEWAY_ADMIN_PASSWORD` | `--admin-password <pw>` | `admin` |
+| `DSH_GATEWAY_PAIRING_CODES` | `--pairing-codes <a,b>` | （无） |
+| `DSH_GATEWAY_WEB_DIST` | `--web-dist <dir>` | 自动探测 |
+
+```sh
+dshgw --host 0.0.0.0 --port 8080 --db ./gw.db --admin-id admin --admin-password secret --pairing-codes 'code1,code2'
+dshgw --help   # 列出全部参数
+```
+
+仅 Docker 使用的环境变量（无命令行参数）：`DSH_GATEWAY_BUILD_CMD`（默认 `pnpm -r build`）、`DSH_GATEWAY_SRC_DIR`（默认 `/app/source`）、`DSH_GATEWAY_PNPM_STORE`（默认 `/data/pnpm-store`）。
+
 把接入插件装进客户机的 dsh（web profile）：
 
 ```sh

@@ -1,7 +1,7 @@
 import Fastify from 'fastify'
 import fastifyStatic from '@fastify/static'
 import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { WebSocketServer } from 'ws'
 import { PROTOCOL_VERSION } from 'dsh-gateway-protocol'
@@ -13,14 +13,72 @@ import { registerControl } from './control.js'
 import { registerUpdater } from './updater.js'
 import { authorizeConsole, getCookie } from './authz.js'
 
-const HOST = process.env.DSH_GATEWAY_HOST ?? '127.0.0.1'
-const PORT = Number(process.env.DSH_GATEWAY_PORT ?? 3300)
+// ---------------------------------------------------------------------------
+// Runtime config: CLI flag > environment variable > default.
+// `dshgw` (the published bundle) accepts these as flags; dev/docker run
+// `tsx src/main.ts` and pass no flags, so the CLI layer is inert there.
+// ---------------------------------------------------------------------------
+const CLI_MAP: Record<string, string> = {
+  host: 'DSH_GATEWAY_HOST',
+  port: 'DSH_GATEWAY_PORT',
+  db: 'DSH_GATEWAY_DB_PATH',
+  'admin-id': 'DSH_GATEWAY_ADMIN_ID',
+  'admin-password': 'DSH_GATEWAY_ADMIN_PASSWORD',
+  'pairing-codes': 'DSH_GATEWAY_PAIRING_CODES',
+  'web-dist': 'DSH_GATEWAY_WEB_DIST',
+}
+function cliConfig(): Record<string, string> {
+  const out: Record<string, string> = {}
+  const argv = process.argv.slice(2)
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]
+    if (arg === '-h' || arg === '--help') {
+      console.log(
+        [
+          'dshgw — start the deepseek-harness-gateway server',
+          '',
+          'Usage: dshgw [options]',
+          '',
+          'Options (CLI flag > env var > default):',
+          '  --host <addr>            bind host                (DSH_GATEWAY_HOST,           default 127.0.0.1)',
+          '  --port <n>               bind port                (DSH_GATEWAY_PORT,           default 3300)',
+          '  --db <path>              sqlite db path           (DSH_GATEWAY_DB_PATH,        default ./gateway.db)',
+          '  --admin-id <id>          bootstrap admin id       (DSH_GATEWAY_ADMIN_ID,       default admin)',
+          '  --admin-password <pw>    bootstrap admin password (DSH_GATEWAY_ADMIN_PASSWORD, default admin)',
+          '  --pairing-codes <a,b>    seed onboarding codes    (DSH_GATEWAY_PAIRING_CODES)',
+          '  --web-dist <dir>         portal static dir        (DSH_GATEWAY_WEB_DIST)',
+          '  -h, --help               show this help and exit',
+          '',
+        ].join('\n'),
+      )
+      process.exit(0)
+    }
+    const key = arg.replace(/^--/, '')
+    const env = CLI_MAP[key]
+    if (env === undefined) {
+      if (arg.startsWith('--')) console.error(`[dshgw] unknown option: ${arg} (try --help)`)
+      continue
+    }
+    const val = argv[i + 1]
+    if (val === undefined || val.startsWith('--')) {
+      console.error(`[dshgw] missing value for ${arg}`)
+      process.exit(1)
+    }
+    out[env] = val
+    i++
+  }
+  return out
+}
+const CLI = cliConfig()
+
+const HOST = CLI.DSH_GATEWAY_HOST ?? process.env.DSH_GATEWAY_HOST ?? '127.0.0.1'
+const PORT = Number(CLI.DSH_GATEWAY_PORT ?? process.env.DSH_GATEWAY_PORT ?? 3300)
 // Durable SQLite store (ADR-0007). Defaults to ./gateway.db; set DSH_GATEWAY_DB_PATH
 // to ':memory:' for a throwaway run or to a custom file path.
-const DB_PATH = process.env.DSH_GATEWAY_DB_PATH ?? './gateway.db'
+const DB_PATH = CLI.DSH_GATEWAY_DB_PATH ?? process.env.DSH_GATEWAY_DB_PATH ?? './gateway.db'
 // Bootstrap platform admin (created on first run).
-const ADMIN_ID = process.env.DSH_GATEWAY_ADMIN_ID ?? 'admin'
-const ADMIN_PASSWORD = process.env.DSH_GATEWAY_ADMIN_PASSWORD ?? 'admin'
+const ADMIN_ID = CLI.DSH_GATEWAY_ADMIN_ID ?? process.env.DSH_GATEWAY_ADMIN_ID ?? 'admin'
+const ADMIN_PASSWORD = CLI.DSH_GATEWAY_ADMIN_PASSWORD ?? process.env.DSH_GATEWAY_ADMIN_PASSWORD ?? 'admin'
 
 const app = Fastify({ logger: true })
 
@@ -29,7 +87,7 @@ await store.open()
 
 // Ensure the bootstrap system admin exists.
 await bootstrap(store, { adminId: ADMIN_ID, adminPassword: ADMIN_PASSWORD })
-if (process.env.DSH_GATEWAY_ADMIN_PASSWORD === undefined) {
+if (CLI.DSH_GATEWAY_ADMIN_PASSWORD === undefined && process.env.DSH_GATEWAY_ADMIN_PASSWORD === undefined) {
   app.log.warn('using default bootstrap admin password ("admin") — set DSH_GATEWAY_ADMIN_PASSWORD in production')
 }
 
@@ -37,7 +95,7 @@ const auth = buildAuth()
 const registry = new NodeRegistry(store)
 
 // Seed one-time pairing codes for testing: DSH_GATEWAY_PAIRING_CODES="code,code,..."
-for (const code of (process.env.DSH_GATEWAY_PAIRING_CODES ?? '').split(',').filter(Boolean)) {
+for (const code of (CLI.DSH_GATEWAY_PAIRING_CODES ?? process.env.DSH_GATEWAY_PAIRING_CODES ?? '').split(',').filter(Boolean)) {
   try {
     await registry.seedPairingCode(code)
   } catch (e) {
@@ -125,8 +183,33 @@ wscheckWss.on('connection', (ws) => {
 // Portal static hosting — apps/web build output. The SPA is served at `/` and
 // its assets at `/portal/*` (Vite base=/portal/), so the dsh web UI's absolute
 // paths (/assets, /api, /plugins) fall through to the `/*` relay passthrough.
-const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url))
-const indexHtml = join(webDist, 'index.html')
+//
+// Resolution supports every deployment shape:
+//   - monorepo dev / docker: apps/web/dist relative to this module
+//   - published npm package: dist/portal (copied by scripts/bundle.mjs)
+//   - explicit override via DSH_GATEWAY_WEB_DIST
+// The first candidate whose index.html exists wins; if none, portal hosting is
+// disabled (the server still runs the control plane + router + WS).
+function resolveWebDist(): string | undefined {
+  const here = dirname(fileURLToPath(import.meta.url))
+  const candidates = [
+    CLI.DSH_GATEWAY_WEB_DIST ?? process.env.DSH_GATEWAY_WEB_DIST,
+    join(here, '..', '..', 'web', 'dist'),
+    join(here, 'portal'),
+    join(here, '..', 'portal'),
+  ].filter(Boolean) as string[]
+  for (const c of candidates) {
+    if (existsSync(join(c, 'index.html'))) return c
+  }
+  if (candidates.length === 0) {
+    app.log.warn('portal hosting disabled — no web dist candidate configured (set DSH_GATEWAY_WEB_DIST)')
+  } else {
+    app.log.warn(`portal hosting disabled — no built index.html in ${candidates.join(', ')}`)
+  }
+  return undefined
+}
+const webDist = resolveWebDist()
+const indexHtml = webDist ? join(webDist, 'index.html') : null
 
 // The SPA shell must always be fresh so a hot-updated build (new hashed assets)
 // is picked up immediately instead of a stale cached copy. Re-check existence on
@@ -134,7 +217,7 @@ const indexHtml = join(webDist, 'index.html')
 // a failed or interrupted build must degrade to a retryable 503 rather than a raw
 // ENOENT 500 that never recovers.
 app.get('/', async (_req, reply) => {
-  if (!existsSync(indexHtml)) {
+  if (!indexHtml || !existsSync(indexHtml)) {
     app.log.warn('portal index.html missing — serving 503 (rebuild in progress or failed)')
     return reply
       .code(503)
@@ -146,10 +229,8 @@ app.get('/', async (_req, reply) => {
   return reply.type('text/html').header('Cache-Control', 'no-store').send(readFileSync(indexHtml))
 })
 
-if (existsSync(webDist)) {
+if (webDist) {
   await app.register(fastifyStatic, { root: webDist, prefix: '/portal/' })
-} else {
-  app.log.warn('apps/web/dist not built — portal static hosting disabled')
 }
 
 // /agent — outbound wss from dsh-gateway-agent (onboarding + heartbeat).
