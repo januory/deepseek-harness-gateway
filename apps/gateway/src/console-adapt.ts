@@ -349,9 +349,9 @@ const ADAPT_JS = `
     fab.title = 'Open sidebar'
     fab.style.cssText = [
       'position:fixed', 'left:calc(10px + env(safe-area-inset-left))',
-      'bottom:calc(88px + env(safe-area-inset-bottom))', 'z-index:2147482999',
+      'bottom:calc(180px + env(safe-area-inset-bottom))', 'z-index:2147482999',
       'width:44px', 'height:44px', 'border-radius:14px',
-      'border:1px solid rgba(127,127,127,.35)', 'background:rgba(30,30,36,.92)',
+      'border:1px solid rgba(127,127,127,.35)', 'background:rgba(30,30,36,.68)',
       'color:#fff', 'display:flex', 'align-items:center', 'justify-content:center',
       'cursor:pointer', 'box-shadow:0 2px 10px rgba(0,0,0,.3)'
     ].join(';')
