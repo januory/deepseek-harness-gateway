@@ -64,6 +64,8 @@ export const api = {
   login: (id: string, password: string) =>
     req<{ user: PublicUser }>('/gw/login', { method: 'POST', body: JSON.stringify({ id, password }) }),
   logout: () => req<{ ok: boolean }>('/gw/logout', { method: 'POST' }),
+  changePassword: (oldPassword: string, newPassword: string) =>
+    req<{ ok: boolean }>('/gw/me/password', { method: 'POST', body: JSON.stringify({ oldPassword, newPassword }) }),
 
   // ---- users ------------------------------------------------------------------
   users: () => req<{ users: UserView[] }>('/gw/users'),

@@ -7,7 +7,7 @@ import type { FastifyInstance } from 'fastify'
 import type { IStore, Role, User, Machine } from 'dsh-gateway-store'
 import type { NodeRegistry } from './nodes.js'
 import type { Auth } from './auth.js'
-import { hashPassword } from './auth.js'
+import { hashPassword, verifyPassword } from './auth.js'
 import { SEAT_TTL_MS } from './authz.js'
 
 /** Roles that can manage machines/users/assignments/audit. */
@@ -55,6 +55,18 @@ export async function registerControl(app: FastifyInstance, store: IStore, regis
     }
     await store.upsertUser({ id, role: targetRole, authHash: hashPassword(password) })
     return { ok: true, user: { id, role: targetRole } }
+  })
+
+  // ---- self: change password ---------------------------------------------------
+  app.post('/gw/me/password', { preHandler: requireRole() }, async (req, reply) => {
+    const user = req.user!
+    const { oldPassword, newPassword } = (req.body ?? {}) as { oldPassword?: string; newPassword?: string }
+    if (!oldPassword || !newPassword) return reply.code(400).send({ error: 'oldPassword and newPassword required' })
+    if (!verifyPassword(oldPassword, user.authHash)) return reply.code(401).send({ error: '当前密码不正确' })
+    if (newPassword.length < 6) return reply.code(400).send({ error: '新密码至少 6 位' })
+    await store.upsertUser({ id: user.id, role: user.role, authHash: hashPassword(newPassword) })
+    await store.appendAudit({ ts: new Date().toISOString(), actor: user.id, action: 'change_password', result: 'ok' })
+    return { ok: true }
   })
 
   // ---- machines -------------------------------------------------------------

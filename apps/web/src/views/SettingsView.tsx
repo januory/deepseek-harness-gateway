@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import type { PublicUser, UpdateStatus, VersionInfo } from '../types'
-import { Button, Card, Empty, PageHeader, Spinner, useToast } from '../ui'
+import { Button, Card, Empty, Field, PageHeader, RoleBadge, Spinner, useToast } from '../ui'
+
+type SettingsTab = 'account' | 'system'
 
 // A hot-update makes the gateway reload itself: the process exits after the pull
 // and the entrypoint supervisor loop restarts it on the new HEAD (in-memory
@@ -31,12 +33,20 @@ export function SettingsView({ me }: { me: PublicUser }) {
   const isSystemAdmin = me.role === 'system-admin'
   const toast = useToast()
 
+  const [tab, setTab] = useState<SettingsTab>('account')
+
   const [info, setInfo] = useState<VersionInfo | null>(null)
   const [check, setCheck] = useState<UpdateStatus | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [reloading, setReloading] = useState(false)
+
+  // change-password form
+  const [oldPassword, setOldPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [pwBusy, setPwBusy] = useState(false)
 
   const load = useCallback(async () => {
     setErr(null)
@@ -94,6 +104,33 @@ export function SettingsView({ me }: { me: PublicUser }) {
     window.location.reload()
   }
 
+  async function doChangePassword() {
+    if (!oldPassword || !newPassword) {
+      toast('error', '请填写当前密码与新密码')
+      return
+    }
+    if (newPassword.length < 6) {
+      toast('error', '新密码至少 6 位')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      toast('error', '两次输入的新密码不一致')
+      return
+    }
+    setPwBusy(true)
+    try {
+      await api.changePassword(oldPassword, newPassword)
+      toast('ok', '密码已更新')
+      setOldPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+    } catch (e) {
+      toast('error', String((e as Error).message ?? e))
+    } finally {
+      setPwBusy(false)
+    }
+  }
+
   const head = info?.head
   const hasGit = info?.git !== false
   const behind = check?.behind ?? 0
@@ -101,124 +138,202 @@ export function SettingsView({ me }: { me: PublicUser }) {
 
   return (
     <>
-      <PageHeader
-        title="设置"
-        desc="查看 deepseek-harness-gateway 的运行版本，并热更新到最新提交"
-        actions={<Button onClick={() => void load()}>刷新</Button>}
-      />
+      <PageHeader title="设置" desc="管理账户安全与网关系统设置" />
 
-      {err ? <div className="login-error">{err}</div> : null}
+      <div className="tabs" role="tablist">
+        <button
+          className={`tab ${tab === 'account' ? 'tab--active' : ''}`}
+          role="tab"
+          aria-selected={tab === 'account'}
+          onClick={() => setTab('account')}
+        >
+          账户
+        </button>
+        <button
+          className={`tab ${tab === 'system' ? 'tab--active' : ''}`}
+          role="tab"
+          aria-selected={tab === 'system'}
+          onClick={() => setTab('system')}
+        >
+          系统
+        </button>
+      </div>
 
-      <Card title="版本信息">
-        {info === null ? (
-          <Spinner />
-        ) : !info.git ? (
-          <Empty>当前源码不是 git 仓库，不可热更新</Empty>
-        ) : (
-          <dl className="kv">
-            <dt>仓库</dt>
-            <dd className="mono">{info.repo}</dd>
-            <dt>分支</dt>
-            <dd>
-              <span className="mono">{info.branch || '—'}</span>
-            </dd>
-            <dt>远程</dt>
-            <dd className="mono">{info.remote ?? '（无 origin 远程）'}</dd>
-            <dt>当前提交</dt>
-            <dd>
-              {head ? (
-                <div className="mono">
-                  <strong>{head.short}</strong> <span className="muted">{head.subject}</span>
-                  <div className="muted">
-                    {head.author} · {head.date} · {head.hash}
-                  </div>
-                </div>
-              ) : (
-                '（无提交）'
-              )}
-            </dd>
-            <dt>工作区</dt>
-            <dd>
-              {info.dirty ? (
-                <span className="badge badge--amber">有未提交改动</span>
-              ) : (
-                <span className="badge badge--green">干净</span>
-              )}
-            </dd>
-          </dl>
-        )}
-      </Card>
+      {err && tab === 'system' ? <div className="login-error">{err}</div> : null}
 
-      <Card
-        title="更新"
-        actions={
-          <Button variant="primary" disabled={checking || !hasGit} onClick={() => void doCheck()}>
-            {checking ? '检查中…' : '检查更新'}
-          </Button>
-        }
-      >
-        {!hasGit ? (
-          <p className="muted" style={{ margin: 0 }}>
-            当前源码不是 git 仓库，无法热更新（把 git 仓库挂载到源码目录即可启用）。
-          </p>
-        ) : check === null ? (
-          <p className="muted" style={{ margin: 0 }}>
-            点击「检查更新」从 git 远程获取最新提交，查看可更新数量。
-          </p>
-        ) : behind === 0 ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span className="badge badge--green">已是最新</span>
-            {check.ahead > 0 ? (
-              <span className="muted">本地领先远程 {check.ahead} 个提交</span>
-            ) : null}
-          </div>
-        ) : (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <span className="badge badge--amber">有 {behind} 个提交可以更新</span>
-              {check.ahead > 0 ? <span className="muted">本地还领先 {check.ahead} 个提交</span> : null}
+      {tab === 'account' ? (
+        <>
+          <Card title="账号信息">
+            <dl className="kv">
+              <dt>账号</dt>
+              <dd>{me.id}</dd>
+              <dt>角色</dt>
+              <dd>
+                <RoleBadge role={me.role} />
+              </dd>
+            </dl>
+          </Card>
+
+          <Card title="修改密码">
+            <div className="form-grid">
+              <Field label="当前密码">
+                <input
+                  className="input"
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="当前密码"
+                  value={oldPassword}
+                  onChange={(e) => setOldPassword(e.target.value)}
+                />
+              </Field>
+              <Field label="新密码">
+                <input
+                  className="input"
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="至少 6 位"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                />
+              </Field>
+              <Field label="确认新密码">
+                <input
+                  className="input"
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="再次输入新密码"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+              </Field>
             </div>
-
-            {check.incoming.length === 0 ? (
-              <Empty>无法列出待更新提交</Empty>
-            ) : (
-              <div className="card__body card__body--flush" style={{ margin: '0 -18px -18px' }}>
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>提交</th>
-                      <th>说明</th>
-                      <th>作者</th>
-                      <th>日期</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {check.incoming.map((c) => (
-                      <tr key={c.hash}>
-                        <td className="mono">{c.short}</td>
-                        <td style={{ fontWeight: 600 }}>{c.subject}</td>
-                        <td className="muted">{c.author}</td>
-                        <td className="muted">{c.date}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {reloading ? (
-              <p className="muted" style={{ marginTop: 10 }}>
-                服务正在重载，恢复后自动跳转到登录页…
-              </p>
-            ) : null}
             <div style={{ marginTop: 14 }}>
-              <Button variant="danger" disabled={!canUpdate} onClick={() => void doUpdate()}>
-                {reloading ? '服务重载中…' : updating ? '更新中…' : isSystemAdmin ? '更新到最新' : '仅系统管理员可更新'}
+              <Button variant="primary" disabled={pwBusy} onClick={() => void doChangePassword()}>
+                {pwBusy ? '提交中…' : '修改密码'}
               </Button>
             </div>
-          </>
-        )}
-      </Card>
+          </Card>
+        </>
+      ) : (
+        <>
+          <Card title="版本信息">
+            {info === null ? (
+              <Spinner />
+            ) : !info.git ? (
+              <Empty>当前源码不是 git 仓库，不可热更新</Empty>
+            ) : (
+              <dl className="kv">
+                <dt>仓库</dt>
+                <dd className="mono">{info.repo}</dd>
+                <dt>分支</dt>
+                <dd>
+                  <span className="mono">{info.branch || '—'}</span>
+                </dd>
+                <dt>远程</dt>
+                <dd className="mono">{info.remote ?? '（无 origin 远程）'}</dd>
+                <dt>当前提交</dt>
+                <dd>
+                  {head ? (
+                    <div className="mono">
+                      <strong>{head.short}</strong> <span className="muted">{head.subject}</span>
+                      <div className="muted">
+                        {head.author} · {head.date} · {head.hash}
+                      </div>
+                    </div>
+                  ) : (
+                    '（无提交）'
+                  )}
+                </dd>
+                <dt>工作区</dt>
+                <dd>
+                  {info.dirty ? (
+                    <span className="badge badge--amber">有未提交改动</span>
+                  ) : (
+                    <span className="badge badge--green">干净</span>
+                  )}
+                </dd>
+              </dl>
+            )}
+          </Card>
+
+          <Card
+            title="更新"
+            actions={
+              <Button variant="primary" disabled={checking || !hasGit} onClick={() => void doCheck()}>
+                {checking ? '检查中…' : '检查更新'}
+              </Button>
+            }
+          >
+            {!hasGit ? (
+              <p className="muted" style={{ margin: 0 }}>
+                当前源码不是 git 仓库，无法热更新（把 git 仓库挂载到源码目录即可启用）。
+              </p>
+            ) : check === null ? (
+              <p className="muted" style={{ margin: 0 }}>
+                点击「检查更新」从 git 远程获取最新提交，查看可更新数量。
+              </p>
+            ) : behind === 0 ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="badge badge--green">已是最新</span>
+                {check.ahead > 0 ? (
+                  <span className="muted">本地领先远程 {check.ahead} 个提交</span>
+                ) : null}
+              </div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <span className="badge badge--amber">有 {behind} 个提交可以更新</span>
+                  {check.ahead > 0 ? <span className="muted">本地还领先 {check.ahead} 个提交</span> : null}
+                </div>
+
+                {check.incoming.length === 0 ? (
+                  <Empty>无法列出待更新提交</Empty>
+                ) : (
+                  <div className="card__body card__body--flush" style={{ margin: '0 -18px -18px' }}>
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>提交</th>
+                          <th>说明</th>
+                          <th>作者</th>
+                          <th>日期</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {check.incoming.map((c) => (
+                          <tr key={c.hash}>
+                            <td className="mono">{c.short}</td>
+                            <td style={{ fontWeight: 600 }}>{c.subject}</td>
+                            <td className="muted">{c.author}</td>
+                            <td className="muted">{c.date}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {reloading ? (
+                  <p className="muted" style={{ marginTop: 10 }}>
+                    服务正在重载，恢复后自动跳转到登录页…
+                  </p>
+                ) : null}
+                <div style={{ marginTop: 14 }}>
+                  <Button variant="danger" disabled={!canUpdate} onClick={() => void doUpdate()}>
+                    {reloading
+                      ? '服务重载中…'
+                      : updating
+                        ? '更新中…'
+                        : isSystemAdmin
+                          ? '更新到最新'
+                          : '仅系统管理员可更新'}
+                  </Button>
+                </div>
+              </>
+            )}
+          </Card>
+        </>
+      )}
     </>
   )
 }
