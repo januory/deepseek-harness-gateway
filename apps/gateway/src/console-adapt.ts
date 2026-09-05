@@ -101,8 +101,12 @@ const ADAPT_CSS = `
 html,body{height:100%}
 /* The app frame fills the dynamic viewport (browser chrome collapse). */
 body.dsh-gw-mobile [class$="_frame"]{width:100%;height:100dvh}
-/* Collapsed rail: bigger touch targets. */
-body.dsh-gw-mobile [class$="_railFish"] button,body.dsh-gw-mobile [class$="_panelIcon"],body.dsh-gw-mobile [class$="_newSession"]{min-width:44px;min-height:44px}
+/* Sidebar controls: bigger touch targets — enlarge the BUTTON box, never the
+   icon glyph. The _panelIcon class is the <svg> inside the toggle; forcing a
+   min-width on it stretches the icon itself to 44px (the "huge button"
+   mobile bug). _railFish does not exist in this cohort, so it matched
+   nothing; the toggle button lives in _logoRow (class ..._iconButton). */
+body.dsh-gw-mobile [class$="_logoRow"] [class*="_iconButton"],body.dsh-gw-mobile [class$="_newSession"]{min-width:44px;min-height:44px}
 /* Pin every column to an explicit track so the conversation always lands on
    the 1fr track regardless of the collapsed rail's computed position (the
    official rail can leave the grid flow on some cohorts, which would
