@@ -2,4 +2,4 @@
 # 只做"增加能力"：insert 自身行，不 replace 任何内置行（ADR-0010）。
 - insert:
     - id: dsh-gateway-agent
-      name: 'dsh-gateway-agent'
+      name: '@januory/dsh-gateway-agent'

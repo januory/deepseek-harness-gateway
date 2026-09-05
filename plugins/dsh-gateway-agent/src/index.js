@@ -30,7 +30,7 @@ export const name = 'dsh-gateway-agent'
 const PACKAGE = 'dsh-gateway-agent'
 const NAMESPACE = 'gatewayAgent'
 // Keep in sync with package.json "version".
-const AGENT_VERSION = '0.1.0'
+const AGENT_VERSION = '0.1.1'
 
 // ---------------------------------------------------------------------------
 // Config: self-owned JSON via config.js (sealed secrets + browser-safe sanitize).

@@ -1,6 +1,6 @@
 {
   "name": "@januory/dsh-gateway-agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "客户机接入插件：出站连接 deepseek-harness-gateway，桥接本机 dsh web 供门户完整操控。",
   "repository": {
