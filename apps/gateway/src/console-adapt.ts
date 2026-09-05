@@ -132,8 +132,9 @@ body.dsh-gw-mobile [class$="_panel"]>[class$="_nav"]{width:100%!important;height
 body.dsh-gw-mobile [class$="_panel"]>[class$="_nav"] [class$="_navList"]{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;overflow-x:auto!important;width:auto!important;height:auto!important;gap:4px!important;padding:8px 10px!important}
 body.dsh-gw-mobile [class$="_panel"]>[class$="_nav"] [class$="_navCell"]{flex:0 0 auto!important;white-space:nowrap!important;padding:8px 12px!important;border-radius:8px!important}
 body.dsh-gw-mobile [class$="_panel"]>[class$="_nav"] [class$="_navTitle"]{white-space:nowrap!important;padding:10px!important}
-body.dsh-gw-mobile [class$="_panel"]>[class$="_content"]{width:100%!important;flex:1 1 auto!important;display:flex!important;flex-direction:column!important;overflow:hidden!important}
-body.dsh-gw-mobile [class$="_panel"]>[class$="_content"] [class$="_options"]{width:100%!important;flex:1 1 auto!important;overflow-y:auto!important;padding:4px 12px!important}
+body.dsh-gw-mobile [class$="_panel"]>[class$="_content"]{box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;flex:1 1 auto!important;display:flex!important;flex-direction:column!important;overflow:hidden!important}
+body.dsh-gw-mobile [class$="_panel"]>[class$="_content"] [class$="_options"]{box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;flex:1 1 auto!important;overflow-y:auto!important;padding:4px!important;border:none!important}
+body.dsh-gw-mobile [class$="_options"] *{box-sizing:border-box!important;max-width:100%!important;min-width:0!important}
 body.dsh-gw-mobile [class$="_panel"] [class$="_section"],body.dsh-gw-mobile [class$="_panel"] [class$="_row"]{width:100%!important;min-width:0!important}
 body.dsh-gw-mobile [class$="_panel"] [class$="_rowText"],body.dsh-gw-mobile [class$="_panel"] [class$="_desc"]{min-width:0!important}
 `
@@ -149,6 +150,38 @@ const ADAPT_JS = `
   if (window.__dshGwAdaptInstalled) return
   window.__dshGwAdaptInstalled = true
   var KEY = 'dsh-gw-force-desktop'
+
+  // ---- Engine polyfills FIRST (this head script runs before the app bundle):
+  // vendor browsers on older Chromium (HeyTap Chrome/115, many built-ins) lack
+  // Promise.withResolvers / AbortSignal.any and crash the dsh client boot, so
+  // its mux/events chain never starts and session lists never load. ----
+  if (typeof Promise !== 'undefined' && typeof Promise.withResolvers !== 'function') {
+    try {
+      Promise.withResolvers = function () {
+        var resolve_
+        var reject_
+        var promise = new Promise(function (resolve, reject) { resolve_ = resolve; reject_ = reject })
+        return { promise: promise, resolve: resolve_, reject: reject_ }
+      }
+    } catch (e) {}
+  }
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.any !== 'function') {
+    try {
+      AbortSignal.any = function (signals) {
+        var c = new AbortController()
+        var fire = function () {
+          try { c.abort(new DOMException('Aborted by AbortSignal.any', 'AbortError')) } catch (e) { c.abort() }
+        }
+        var list = signals && typeof signals[Symbol.iterator] === 'function' ? Array.from(signals) : []
+        for (var i = 0; i < list.length; i++) {
+          var s = list[i]
+          if (s && s.aborted) { fire(); break }
+          if (s && typeof s.addEventListener === 'function') s.addEventListener('abort', fire, { once: true })
+        }
+        return c.signal
+      }
+    } catch (e) {}
+  }
 
   // ---- boot/JS-error probe: report to the gateway so device-only failures
   // (e.g. a vendor browser engine crashing early in the console boot) become
@@ -184,22 +217,30 @@ const ADAPT_JS = `
     postDiag('rejection', r && r.message ? r.message : String(r))
   }, true)
   function pageState () {
+    var b = document.body
     var sample = ''
-    try { sample = document.body ? document.body.innerText.replace(/\s+/g, ' ').slice(0, 120) : '' } catch (e) {}
+    try { sample = b ? b.innerText.replace(/\s+/g, ' ').slice(0, 120) : '' } catch (e) {}
     return 'frame=' + (!!document.querySelector('[class$="_frame"]')) +
-      ' adapt=' + document.body.classList.contains(ACTIVE) +
+      ' adapt=' + (b ? b.classList.contains(ACTIVE) : 'n/a') +
       ' connErr=' + /连接异常|Connection issue/.test(sample) +
       ' ready=' + document.readyState + ' sample=' + sample
   }
-  postDiag('boot', 'adapt script ran; ' + pageState())
-  var diagT = 0
-  function diagLoop () {
-    diagT += 1
-    try { postDiag('tick' + diagT, pageState()) } catch (e) {}
+  function bootPost () {
+    try { postDiag('boot', 'adapt script ran; ' + pageState()) } catch (e) {}
+    var diagT = 0
+    function diagLoop () {
+      diagT += 1
+      try { postDiag('tick' + diagT, pageState()) } catch (e) {}
+    }
+    window.setTimeout(diagLoop, 3000)
+    window.setTimeout(diagLoop, 10000)
+    window.setTimeout(diagLoop, 20000)
   }
-  window.setTimeout(diagLoop, 3000)
-  window.setTimeout(diagLoop, 10000)
-  window.setTimeout(diagLoop, 20000)
+  if (document.readyState === 'loading' && document.addEventListener) {
+    document.addEventListener('DOMContentLoaded', bootPost)
+  } else {
+    bootPost()
+  }
   var ACTIVE = 'dsh-gw-mobile'
   var FAB_ID = 'dshGwMobileFab'
   var pill = null
