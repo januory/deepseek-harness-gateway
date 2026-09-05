@@ -114,6 +114,32 @@ export async function registerControl(app: FastifyInstance, store: IStore, regis
     }
   })
 
+  // Rename a machine's display name. The name is a portal-side label stored on
+  // the gateway record — the node reports its own hostname on onboarding, but
+  // reconnects never overwrite it, so the admin edit sticks across restarts.
+  app.post('/gw/machines/:id/rename', { preHandler: requireRole(...ADMIN_ROLES) }, async (req, reply) => {
+    const user = req.user!
+    const id = (req.params as any).id as string
+    const { name } = (req.body ?? {}) as { name?: string }
+    const trimmed = typeof name === 'string' ? name.trim() : ''
+    if (!trimmed) return reply.code(400).send({ error: '名称不能为空' })
+    if (trimmed.length > 64) return reply.code(400).send({ error: '名称过长（最多 64 字符）' })
+    const m = await store.getMachine(id)
+    if (!m) return reply.code(404).send({ error: 'machine not found' })
+    if (m.name !== trimmed) {
+      await store.upsertMachine({ ...m, name: trimmed })
+      await store.appendAudit({
+        ts: new Date().toISOString(),
+        actor: user.id,
+        machineId: id,
+        action: 'rename_machine',
+        result: 'ok',
+        detail: `${m.name} -> ${trimmed}`,
+      })
+    }
+    return { ok: true }
+  })
+
   // ---- assignments -----------------------------------------------------------
   app.get('/gw/assignments', { preHandler: requireRole(...ADMIN_ROLES) }, async () => {
     return { assignments: await store.listAssignments() }

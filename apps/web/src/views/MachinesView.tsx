@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
 import type { MachineView, PublicUser } from '../types'
-import { Button, Card, Empty, Modal, PageHeader, Spinner, StatusBadge, StatusDot, formatTime, shortId, useToast } from '../ui'
+import { Button, Card, Empty, Field, Modal, PageHeader, Spinner, StatusBadge, StatusDot, formatTime, shortId, useToast } from '../ui'
 
 type Filter = 'all' | 'approved' | 'pending' | 'revoked'
 
@@ -15,6 +15,7 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<{ kind: 'revoke' | 'delete'; m: MachineView } | null>(null)
+  const [edit, setEdit] = useState<{ m: MachineView; name: string } | null>(null)
 
   const load = useCallback(async () => {
     setErr(null)
@@ -71,6 +72,11 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
         {isAdmin && m.status === 'pending' && (
           <Button variant="primary" disabled={busy === m.id} onClick={() => void run(m, () => api.approveMachine(m.id))}>
             批准
+          </Button>
+        )}
+        {isAdmin && (
+          <Button variant="default" disabled={busy === m.id} onClick={() => setEdit({ m, name: m.name })}>
+            编辑
           </Button>
         )}
         {isAdmin && m.status === 'approved' && (
@@ -210,6 +216,52 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
               </>
             )}
           </p>
+        ) : null}
+      </Modal>
+
+      {/* Machine edit: the name is the only editable field; the rest is read-only metadata. */}
+      <Modal
+        open={edit !== null}
+        title="编辑机器"
+        confirmLabel="保存"
+        onClose={() => setEdit(null)}
+        onConfirm={() => {
+          if (!edit) return
+          const name = edit.name.trim()
+          if (!name) {
+            toast('error', '名称不能为空')
+            return
+          }
+          const { m } = edit
+          setEdit(null)
+          void run(m, () => api.renameMachine(m.id, name))
+        }}
+      >
+        {edit ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <span className="muted" style={{ fontSize: 12.5 }}>
+                机器 ID
+              </span>
+              <span className="mono" style={{ fontSize: 13 }}>
+                {edit.m.id}
+              </span>
+              <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>
+                <StatusBadge status={edit.m.status} /> · dsh {edit.m.dshVersion || '—'} · 创建于 {formatTime(edit.m.createdAt)}
+              </div>
+            </div>
+            <Field label="名称">
+              <input
+                className="input"
+                value={edit.name}
+                maxLength={64}
+                placeholder="机器名称"
+                spellCheck={false}
+                autoFocus
+                onChange={(e) => setEdit({ ...edit, name: e.target.value })}
+              />
+            </Field>
+          </div>
         ) : null}
       </Modal>
     </>

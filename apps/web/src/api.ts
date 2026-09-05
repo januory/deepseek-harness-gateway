@@ -79,6 +79,8 @@ export const api = {
   approveMachine: (id: string) => req<{ ok: boolean }>('/gw/machines/' + id + '/approve', { method: 'POST' }),
   revokeMachine: (id: string) => req<{ ok: boolean }>('/gw/machines/' + id + '/revoke', { method: 'POST' }),
   deleteMachine: (id: string) => req<{ ok: boolean }>('/gw/machines/' + id, { method: 'DELETE' }),
+  renameMachine: (id: string, name: string) =>
+    req<{ ok: boolean }>('/gw/machines/' + id + '/rename', { method: 'POST', body: JSON.stringify({ name }) }),
 
   // ---- assignments -------------------------------------------------------------
   assignments: () => req<{ assignments: Assignment[] }>('/gw/assignments'),
