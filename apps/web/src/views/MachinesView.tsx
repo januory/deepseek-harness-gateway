@@ -66,18 +66,14 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
       <>
         {m.status === 'approved' && (
           <>
-            {mySeat ? (
-              <Button variant="ghost" disabled={busy === m.id} onClick={() => void run(m, () => api.releaseSeat(m.id))}>
-                释放席位
-              </Button>
-            ) : (
-              <Button variant="ghost" disabled={busy === m.id} onClick={() => void run(m, () => api.acquireSeat(m.id))}>
-                获取席位
+            <Button variant="primary" disabled={busy === m.id} onClick={() => openConsole(m)}>
+              控制台
+            </Button>
+            {mySeat && (
+              <Button variant="default" disabled={busy === m.id} onClick={() => void run(m, () => api.releaseSeat(m.id))}>
+                释放
               </Button>
             )}
-            <Button variant="primary" disabled={busy === m.id} onClick={() => openConsole(m)}>
-              打开控制台
-            </Button>
           </>
         )}
         {isAdmin && m.status === 'pending' && (
@@ -86,7 +82,7 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
           </Button>
         )}
         {isAdmin && m.status === 'approved' && (
-          <Button variant="ghost" disabled={busy === m.id} onClick={() => setConfirm({ kind: 'revoke', m })}>
+          <Button variant="default" disabled={busy === m.id} onClick={() => setConfirm({ kind: 'revoke', m })}>
             吊销
           </Button>
         )}
@@ -120,20 +116,21 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
       />
 
       <div className="card">
-        <div className="card__body" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <input
-            className="input"
-            style={{ flex: 1 }}
-            placeholder="按名称或 ID 搜索…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <select className="select" value={filter} onChange={(e) => setFilter(e.target.value as Filter)}>
-            <option value="all">全部状态</option>
-            <option value="approved">已批准</option>
-            <option value="pending">待批准</option>
-            <option value="revoked">已吊销</option>
-          </select>
+        <div className="card__body">
+          <div className="machines-toolbar">
+            <input
+              className="input"
+              placeholder="按名称或 ID 搜索…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <select className="select" value={filter} onChange={(e) => setFilter(e.target.value as Filter)}>
+              <option value="all">全部状态</option>
+              <option value="approved">已批准</option>
+              <option value="pending">待批准</option>
+              <option value="revoked">已吊销</option>
+            </select>
+          </div>
         </div>
       </div>
 

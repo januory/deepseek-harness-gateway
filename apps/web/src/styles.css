@@ -800,6 +800,25 @@ h3 {
   background: #fff;
 }
 
+/* machines: search/filter toolbar */
+.machines-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Children must be allowed to shrink below their intrinsic width, otherwise
+   the row overflows narrow phone viewports (the default input width alone
+   exceeds a 360px screen once the 16px mobile font-size kicks in). */
+.machines-toolbar .input,
+.machines-toolbar .select {
+  min-width: 0;
+}
+
+.machines-toolbar .input {
+  flex: 1;
+}
+
 /* ---- mobile nav controls (hidden on desktop) ---------------------------------- */
 
 .sidebar__close,
@@ -959,6 +978,12 @@ h3 {
     flex-wrap: wrap;
   }
 
+  /* machines: search/filter toolbar — let the filter wrap below the search on
+     narrow/tablet widths instead of squeezing the input to nothing */
+  .machines-toolbar {
+    flex-wrap: wrap;
+  }
+
   /* machines: switch from table to stacked cards */
   .machines-table {
     display: none;
@@ -1019,5 +1044,19 @@ h3 {
   .machine-card__actions .btn {
     flex: 1 1 auto;
     justify-content: center;
+  }
+}
+
+/* Phones: stack search and status filter full-width for large tap targets. */
+@media (max-width: 640px) {
+  .machines-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .machines-toolbar .input,
+  .machines-toolbar .select {
+    flex: none;
+    width: 100%;
   }
 }

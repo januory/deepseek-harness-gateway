@@ -68,7 +68,7 @@ export function AssignmentsView({ me }: { me: PublicUser }) {
 
   return (
     <>
-      <PageHeader title="分配" desc="把机器分配给用户，用户即可获取席位并打开控制台" />
+      <PageHeader title="分配" desc="把机器分配给用户，用户即可打开控制台" />
 
       <Card title="新建分配">
         <div className="form-grid">
