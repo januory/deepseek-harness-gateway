@@ -1,4 +1,4 @@
-# build-docker —— 每次 push 到 main 或手动触发时，仅发布 commit hash 镜像（不发布 latest、main 分支或 v* 标签）。
+# build-docker —— 每次 push 到 main 时发布 commit-hash 镜像 + 分支标签（:main）。不发布 latest / v* 标签。
 # latest + v<version> 镜像由 release-dsh-gateway-server 手动发布流程同步发布（latest + v<version> + commit hash）。
 name: build-docker
 
@@ -37,6 +37,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
+            type=ref,event=branch
             type=sha,prefix=,format=short
 
       - name: Build and push
