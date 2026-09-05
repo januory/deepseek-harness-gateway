@@ -87,7 +87,6 @@ export function injectMobileAdapt(html: string, opts: { marker?: boolean } = {})
   const payload =
     `<!-- ${INJECT_MARKER} -->` +
     `<style id="${INJECT_MARKER}-css">${ADAPT_CSS}${markerCss}</style>` +
-    `<script src="/console-ping?v=1"></script>` +
     `<script id="${INJECT_MARKER}-js">${ADAPT_JS}</` + `script>`
   return insertBeforeHeadEnd(html, payload)
 }
@@ -236,78 +235,6 @@ const ADAPT_JS = `
     } catch (e) {}
   }
 
-  // ---- boot/JS-error probe: report to the gateway so device-only failures
-  // (e.g. a vendor browser engine crashing early in the console boot) become
-  // visible in the gateway log without any device devtools. ----
-  var DIAG = '/console-diag'
-  function postDiag (kind, detail) {
-    try {
-      var payload = JSON.stringify({
-        kind: kind,
-        ua: String(navigator.userAgent || '').slice(0, 120),
-        detail: String(detail == null ? '' : detail).slice(0, 500),
-        href: String(location.href || '').slice(0, 200)
-      })
-      if (window.fetch && window.fetch.bind) {
-        try { window.fetch(DIAG, { method: 'POST', headers: { 'content-type': 'application/json' }, body: payload, keepalive: true }) } catch (e) {}
-        return
-      }
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon(DIAG, new Blob([payload], { type: 'application/json' }))
-        return
-      }
-      var x = new XMLHttpRequest()
-      x.open('POST', DIAG, true)
-      x.setRequestHeader('content-type', 'application/json')
-      x.send(payload)
-    } catch (e) {}
-  }
-  window.addEventListener('error', function (e) {
-    postDiag('error', (e && e.message ? e.message : String(e)) + ' @' + (e && e.filename ? e.filename : '') + ':' + (e && e.lineno != null ? e.lineno : ''))
-  }, true)
-  window.addEventListener('unhandledrejection', function (e) {
-    var r = e && e.reason
-    postDiag('rejection', r && r.message ? r.message : String(r))
-  }, true)
-  function pageState () {
-    var b = document.body
-    var sample = ''
-    try { sample = b ? b.innerText.replace(/\s+/g, ' ').slice(0, 120) : '' } catch (e) {}
-    var geom = ''
-    try {
-      var f = document.querySelector('[class$="_frame"]')
-      var c = document.querySelector('[class$="_centerCol"]')
-      var s = document.querySelector('[class$="_scroll"], [class$="_scrollBody"]')
-      var fr = f ? Math.round(f.getBoundingClientRect().height) : -1
-      var cr = c ? Math.round(c.getBoundingClientRect().height) : -1
-      var sr = s ? Math.round(s.getBoundingClientRect().height) : -1
-      var bubbles = document.querySelectorAll('[class$="_bubble"]').length
-      var early = /加载更早|Load earlier/.test(sample)
-      geom = ' winH=' + window.innerHeight +
-        ' frameH=' + fr + ' centerH=' + cr + ' scrollH=' + sr +
-        ' bubbles=' + bubbles + ' earlyOnly=' + early
-    } catch (e) { geom = ' geomErr' }
-    return 'frame=' + (!!document.querySelector('[class$="_frame"]')) +
-      ' adapt=' + (b ? b.classList.contains(ACTIVE) : 'n/a') +
-      ' connErr=' + /连接异常|Connection issue/.test(sample) +
-      ' ready=' + document.readyState + geom + ' sample=' + sample
-  }
-  function bootPost () {
-    try { postDiag('boot', 'adapt script ran; ' + pageState()) } catch (e) {}
-    var diagT = 0
-    function diagLoop () {
-      diagT += 1
-      try { postDiag('tick' + diagT, pageState()) } catch (e) {}
-    }
-    window.setTimeout(diagLoop, 3000)
-    window.setTimeout(diagLoop, 10000)
-    window.setTimeout(diagLoop, 20000)
-  }
-  if (document.readyState === 'loading' && document.addEventListener) {
-    document.addEventListener('DOMContentLoaded', bootPost)
-  } else {
-    bootPost()
-  }
   var ACTIVE = 'dsh-gw-mobile'
   var FAB_ID = 'dshGwMobileFab'
   var pill = null

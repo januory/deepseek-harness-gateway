@@ -45,7 +45,6 @@ export function relayHttp(
   const ua = String(req.headers['user-agent'] ?? '').slice(0, 80)
   const bodyUp = Buffer.isBuffer(req.body) ? (req.body as Buffer).length : 0
   let downBytes = 0
-  console.log(`[relay] ${req.method} ${upstreamPath} machine=${machineId} ua=${ua} at=${new Date().toISOString()}`)
   const headers: Record<string, string> = {}
   for (const [k, v] of Object.entries(req.headers)) {
     if (v === undefined || DROP_HEADERS.has(k.toLowerCase())) continue
@@ -113,9 +112,6 @@ export function relayHttp(
       { method: req.method, path: upstreamPath, headers, body },
       {
         onResponse: (status, resHeaders) => {
-          console.log(
-            `[relay] ${req.method} ${upstreamPath} machine=${machineId} status=${status} after ${Date.now() - started}ms ua=${ua}`,
-          )
           const out = { ...resHeaders }
           for (const k of ['content-length', 'transfer-encoding', 'connection']) delete out[k]
           if (isHtmlForInjection(status, resHeaders)) {
@@ -145,9 +141,6 @@ export function relayHttp(
           htmlBuf += chunk.toString('utf8')
         },
         onEnd: () => {
-          console.log(
-            `[relay] ${req.method} ${upstreamPath} machine=${machineId} END after ${Date.now() - started}ms up=${bodyUp}B down=${downBytes}B ua=${ua}`,
-          )
           if (htmlBuf !== null) {
             const out = pendingHeaders
             // Never let HTTP caches (incl. vendor accelerator layers) reuse the
@@ -163,9 +156,6 @@ export function relayHttp(
             const bodyText = CONSOLE_ADAPT_ENABLED
               ? injectMobileAdapt(withTransport, { marker: upstreamPath.includes('mark=1') })
               : withTransport
-            console.log(
-              `[relay] ${req.method} ${upstreamPath} machine=${machineId} CONSOLE-HTML injected (${downBytes}B -> ${Buffer.byteLength(bodyText, 'utf8')}B) ua=${ua}`,
-            )
             if (!raw.headersSent && out !== null) raw.writeHead(pendingStatus, out)
             pendingHeaders = null
             htmlBuf = null

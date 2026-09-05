@@ -266,61 +266,11 @@ export class NodeRegistry {
 
   private attachBrowserWs(bws: WebSocketT, machineId: string, restPath: string, headers: Record<string, string>): void {
     let channel: number
-    let upBytes = 0
-    let downBytes = 0
     const ua = (headers['user-agent'] || '').slice(0, 80)
-    // Logical-stream tracing for the /api/remote.mux protocol: remember the
-    // endpoint each client streamId opens so server error/end/item frames are
-    // attributable, and count items/bytes per stream so a device that opens a
-    // session stream but receives (or consumes) nothing is distinguishable
-    // from one that drops a huge frame. Only frames up to 256KB are inspected.
-    const streamEndpoints = new Map<string, { endpoint: string; items: number; bytes: number }>()
-    let bigLogged = false
-    const traceServerFrame = (text: string, len: number): void => {
-      if (len > 256 * 1024) {
-        if (!bigLogged) {
-          bigLogged = true
-          console.log(`[mux] big frame ch=${channel} bytes=${len} at=${new Date().toISOString()}`)
-        }
-        return
-      }
-      try {
-        const msg = JSON.parse(text) as { type?: string; streamId?: unknown; error?: { code?: unknown; message?: unknown } }
-        if (typeof msg.streamId !== 'string') return
-        let rec = streamEndpoints.get(msg.streamId)
-        if (msg.type === 'item') {
-          if (rec === undefined) {
-            rec = { endpoint: '?', items: 0, bytes: 0 }
-            streamEndpoints.set(msg.streamId, rec)
-          }
-          rec.items += 1
-          rec.bytes += len
-          return
-        }
-        if (msg.type === 'error') {
-          console.log(
-            `[mux] server error ch=${channel} stream=${msg.streamId.slice(0, 8)} endpoint=${rec?.endpoint ?? '?'} code=${typeof msg.error?.code === 'string' ? msg.error.code : '?'} message=${typeof msg.error?.message === 'string' ? msg.error.message.slice(0, 200) : '?'} at=${new Date().toISOString()}`,
-          )
-          return
-        }
-        if (msg.type === 'end') {
-          console.log(
-            `[mux] stream summary ch=${channel} stream=${msg.streamId.slice(0, 8)} endpoint=${rec?.endpoint ?? '?'} items=${rec?.items ?? 0} bytes=${rec?.bytes ?? 0} at=${new Date().toISOString()}`,
-          )
-          streamEndpoints.delete(msg.streamId)
-        }
-      } catch {
-        /* not a JSON control frame */
-      }
-    }
     try {
       channel = this.relayWsOpen(machineId, restPath, headers, {
-        onOpen: () => {
-          console.log(`[console-ws] upstream open channel=${channel} machine=${machineId} path=${restPath} at=${new Date().toISOString()}`)
-        },
+        onOpen: () => {},
         onData: (kind, data) => {
-          downBytes += data.length
-          if (kind === DataKind.TEXT) traceServerFrame(data.toString('utf8'), data.length)
           if (bws.readyState === WebSocket.OPEN) bws.send(data, { binary: kind === DataKind.BINARY })
         },
         onClose: (code) => {
@@ -331,7 +281,6 @@ export class NodeRegistry {
           }
         },
       })
-      console.log(`[console-ws] relay open channel=${channel} machine=${machineId} path=${restPath} ua=${ua} at=${new Date().toISOString()}`)
     } catch (e) {
       console.log(
         `[console-ws] relay open FAILED machine=${machineId} path=${restPath} ua=${ua} err=${(e as Error).message ?? String(e)} at=${new Date().toISOString()}`,
@@ -342,34 +291,9 @@ export class NodeRegistry {
 
     bws.on('message', (data, isBinary) => {
       const d = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer)
-      upBytes += d.length
-      if (!isBinary && d.length < 8192) {
-        try {
-          const msg = JSON.parse(d.toString('utf8')) as { type?: string; streamId?: unknown; endpoint?: unknown }
-          if (msg.type === 'open' && typeof msg.streamId === 'string' && typeof msg.endpoint === 'string') {
-            streamEndpoints.set(msg.streamId, { endpoint: msg.endpoint, items: 0, bytes: 0 })
-            console.log(`[mux] client open ch=${channel} stream=${msg.streamId.slice(0, 8)} endpoint=${msg.endpoint} at=${new Date().toISOString()}`)
-          } else if (msg.type === 'cancel' && typeof msg.streamId === 'string') {
-            const rec = streamEndpoints.get(msg.streamId)
-            console.log(`[mux] client cancel ch=${channel} stream=${msg.streamId.slice(0, 8)} endpoint=${rec?.endpoint ?? '?'} at=${new Date().toISOString()}`)
-            streamEndpoints.delete(msg.streamId)
-          }
-        } catch {
-          /* not a JSON control frame */
-        }
-      }
       this.sendWs(channel, isBinary ? DataKind.BINARY : DataKind.TEXT, d)
     })
-    bws.on('close', (code) => {
-      for (const [streamId, rec] of streamEndpoints) {
-        console.log(
-          `[mux] stream summary ch=${channel} stream=${streamId.slice(0, 8)} endpoint=${rec.endpoint} items=${rec.items} bytes=${rec.bytes} at=${new Date().toISOString()}`,
-        )
-      }
-      streamEndpoints.clear()
-      console.log(
-        `[console-ws] relay close channel=${channel} machine=${machineId} code=${code} up=${upBytes}B down=${downBytes}B at=${new Date().toISOString()}`,
-      )
+    bws.on('close', () => {
       this.closeWsChannel(channel)
     })
   }
