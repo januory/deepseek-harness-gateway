@@ -17,9 +17,9 @@ new Function('window', code)(globalThis.window)
 
 console.log('global NAMESPACE still =', NAMESPACE, '(should be remoteWorkspaces — our IIFE did not leak)')
 
-const myReg = regs.find((r) => r.id === 'dsh-gateway-agent')
+const myReg = regs.find((r) => r.id === '@januory/dsh-gateway-agent')
 if (!myReg) {
-  console.log('FAIL: no dsh-gateway-agent registration')
+  console.log('FAIL: no @januory/dsh-gateway-agent registration')
   process.exit(1)
 }
 
@@ -36,12 +36,12 @@ const mod = myReg.factory((spec) => {
 })
 mod.apply(ctx)
 
-console.log('$mount package =', mountArg.package, '(should be dsh-gateway-agent)')
+console.log('$mount package =', mountArg.package, '(should be @januory/dsh-gateway-agent)')
 console.log('$mount namespace =', mountArg.descriptors[0].namespace, '(should be gatewayAgent)')
 console.log('$mount method[0] =', mountArg.descriptors[0].method, '(should be status)')
 
 const ok =
-  mountArg.package === 'dsh-gateway-agent' &&
+  mountArg.package === '@januory/dsh-gateway-agent' &&
   mountArg.descriptors[0].namespace === 'gatewayAgent' &&
   mountArg.descriptors[0].method === 'status'
 console.log(ok ? 'PASS: variables are correctly isolated' : 'FAIL: variables still collide')
