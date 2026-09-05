@@ -28,5 +28,14 @@ else
   cd "$SRC_DIR"
 fi
 
-echo "[gateway] starting gateway (tsx watch, hot-reload on git pull)…"
-exec pnpm --filter dsh-gateway-server dev
+echo "[gateway] starting gateway (supervised loop, deterministic hot-reload)…"
+# Deterministic hot-reload: the updater exits the process after a successful
+# `git pull`, and this loop restarts it on the new HEAD. The previous `tsx watch`
+# approach relied on its file watcher noticing git's atomic renames, which is
+# unreliable — a pull could advance HEAD while the running process kept serving
+# pre-pull code.
+while true; do
+  pnpm --filter dsh-gateway-server start || true
+  echo "[gateway] gateway exited; restarting in 1s…"
+  sleep 1
+done

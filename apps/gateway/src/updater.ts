@@ -5,14 +5,15 @@
 // - POST   /gw/version/update   `git pull --ff-only origin <branch>`, spawn the
 //                               build command detached, then reload the gateway
 //
-// Reload strategy: in dev the gateway runs under `tsx watch`, which restarts itself
-// on changed files (so a pull that touches apps/gateway/src/*.ts is already a hot
-// reload). When running compiled JS (`node dist/main.js`) we re-exec the same entry
-// as a detached child and exit, relying on that self-spawn as the supervisor.
+// Reload is DETERMINISTIC: after a successful pull the gateway exits, and the
+// entrypoint's supervisor loop restarts it on the new HEAD. We deliberately do
+// NOT rely on `tsx watch`'s file watcher — git's atomic renames are not reliably
+// detected, so a pull could advance HEAD while the running process kept serving
+// pre-pull code (the earlier failure mode).
 //
-// The build command runs DETACHED from the gateway (see spawnBuildCommand) so that
-// `tsx watch`'s reload — triggered by the same pull touching watched files — never
-// force-kills a build that is still awaiting inside the request handler.
+// The build command runs DETACHED from the gateway (see spawnBuildCommand) so a
+// slow `pnpm -r build` never blocks the reload or graceful shutdown; the gateway
+// serves TypeScript from source (`tsx`), so it does not wait for the build.
 
 import { execFile, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
@@ -56,7 +57,7 @@ export interface UpdateResult {
   from: string
   to: string
   pulled: CommitInfo[]
-  reload: 'watch' | 'restart'
+  reload: 'supervised'
 }
 
 type GitLog = { info: (msg: string) => void; warn: (msg: string) => void; error: (msg: string) => void }
@@ -209,13 +210,12 @@ async function applyUpdate(repo: string): Promise<{ from: string; to: string; pu
  * Spawn an operator-configured build command (e.g. `pnpm -r build`) detached from
  * the gateway process, after a successful pull.
  *
- * Detached + unref'd so the build survives a gateway reload and never blocks
- * graceful shutdown: `tsx watch` restarts the gateway the instant the pull touches
- * a watched .ts file, and a build awaited inside the request handler would keep
- * `app.close()` open until tsx force-kills the process mid-build. The build keeps
- * running on its own; the portal keeps serving the previous dist until it finishes
- * (the web build uses `emptyOutDir: false`, so a failed build never deletes the
- * last-good dist). Output is redirected to a log file so failures stay inspectable.
+ * Detached + unref'd so the build survives the gateway's deterministic reload and
+ * never blocks graceful shutdown: the gateway exits right after the pull and the
+ * supervisor loop restarts it, so a build awaited inside the request handler would
+ * keep `app.close()` open. The build keeps running on its own; the gateway serves
+ * TypeScript from source, so it does not wait for the build to finish. Output is
+ * redirected to a log file so failures stay inspectable.
  */
 function spawnBuildCommand(repo: string, cmd: string): void {
   const logPath = process.env.DSH_GATEWAY_BUILD_LOG ?? join(tmpdir(), 'dsh-gateway-hot-update-build.log')
@@ -231,23 +231,13 @@ function spawnBuildCommand(repo: string, cmd: string): void {
   child.unref()
 }
 
-/** `watch` when tsx runs our .ts entry (it reloads on file change); `restart` for compiled JS. */
-function reloadStrategy(): 'watch' | 'restart' {
-  return (process.argv[1] ?? '').endsWith('.ts') ? 'watch' : 'restart'
-}
-
-function scheduleRestart(app: FastifyInstance): void {
+/** Exit so the entrypoint supervisor loop restarts the gateway on the new HEAD. */
+function scheduleReload(app: FastifyInstance): void {
   setTimeout(async () => {
     try {
-      await app.close() // release the port so the re-spawned child can bind cleanly
+      await app.close() // flush pending responses + audit writes before exit
     } catch {
       /* ignore */
-    }
-    try {
-      const child = spawn(process.execPath, process.argv.slice(1), { cwd: process.cwd(), detached: true, stdio: 'inherit' })
-      child.unref()
-    } catch (e) {
-      app.log.error('[updater] failed to re-exec: ' + String(e))
     }
     process.exit(0)
   }, 500)
@@ -288,15 +278,6 @@ export async function registerUpdater(app: FastifyInstance, auth: Auth, store: I
         spawnBuildCommand(repo, buildCmd)
       }
 
-      const reload = reloadStrategy()
-
-      if (reload === 'restart') {
-        log.info('[updater] update applied — re-exec to reload')
-        scheduleRestart(app)
-      } else {
-        log.info('[updater] update applied — tsx watch will reload on changed files')
-      }
-
       await store.appendAudit({
         ts: new Date().toISOString(),
         actor: req.user!.id,
@@ -305,7 +286,12 @@ export async function registerUpdater(app: FastifyInstance, auth: Auth, store: I
         detail: `${res.pulled.length} commit(s) ${res.from.slice(0, 8)}→${res.to.slice(0, 8)}`,
       })
 
-      return { ok: true, ...res, reload } satisfies UpdateResult
+      // Deterministic reload: exit and let the entrypoint supervisor loop
+      // restart the gateway on the new HEAD. Never rely on a file watcher.
+      log.info('[updater] update applied — exiting for deterministic supervised reload')
+      scheduleReload(app)
+
+      return { ok: true, ...res, reload: 'supervised' } satisfies UpdateResult
     } catch (e) {
       const msg = String((e as Error).message ?? e)
       log.warn('[updater] update failed: ' + msg)

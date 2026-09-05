@@ -3,9 +3,9 @@ import { api } from '../api'
 import type { PublicUser, UpdateStatus, VersionInfo } from '../types'
 import { Button, Card, Empty, PageHeader, Spinner, useToast } from '../ui'
 
-// A hot-update makes the gateway reload itself: the process is restarted (tsx
-// watch re-runs on pulled gateway-source files, or the compiled server re-execs)
-// and its in-memory sessions are cleared. During that window port 3300 is briefly
+// A hot-update makes the gateway reload itself: the process exits after the pull
+// and the entrypoint supervisor loop restarts it on the new HEAD (in-memory
+// sessions are cleared). During that window port 3300 is briefly
 // down, so a browser (or a proxy in front of it) can show 502 and the SPA never
 // reaches the login page. Poll `/health` until the new process is reachable, then
 // hard-reload so the freshly-built portal and the now-invalid session are picked

@@ -86,5 +86,5 @@ export interface UpdateResult {
   from: string
   to: string
   pulled: CommitInfo[]
-  reload: 'watch' | 'restart'
+  reload: 'supervised'
 }
