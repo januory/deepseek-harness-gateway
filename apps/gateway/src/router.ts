@@ -151,7 +151,9 @@ export function relayHttp(
           if (htmlBuf !== null) {
             const out = pendingHeaders
             const withTransport = injectTransportOwnership(htmlBuf)
-            const bodyText = CONSOLE_ADAPT_ENABLED ? injectMobileAdapt(withTransport) : withTransport
+            const bodyText = CONSOLE_ADAPT_ENABLED
+              ? injectMobileAdapt(withTransport, { marker: upstreamPath.includes('gwmark') })
+              : withTransport
             console.log(
               `[relay] ${req.method} ${upstreamPath} machine=${machineId} CONSOLE-HTML injected (${downBytes}B -> ${Buffer.byteLength(bodyText, 'utf8')}B) ua=${ua}`,
             )

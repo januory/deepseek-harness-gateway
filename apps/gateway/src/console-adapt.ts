@@ -73,13 +73,21 @@ export function injectTransportOwnership(html: string): string {
 /**
  * Inject the mobile-adapt layer into one relayed console HTML document.
  * @param html - the upstream index document (UTF-8 text).
+ * @param opts - when `marker` is true, a pure-CSS visible dot (no JS required)
+ *   is added on narrow portrait screens so a device test can tell whether the
+ *   injected document is the one the browser actually renders (open the
+ *   console URL with ?gwmark=1).
  * @returns the document with the layer inserted before </head> (or </body>).
  */
-export function injectMobileAdapt(html: string): string {
+export function injectMobileAdapt(html: string, opts: { marker?: boolean } = {}): string {
   if (html.includes(INJECT_MARKER)) return html
+  const markerCss = opts.marker
+    ? '\n@media (max-width:1100px) and (orientation:portrait){html>body::after{content:"◉";position:fixed;right:6px;top:6px;z-index:2147483647;font:20px/1 sans-serif;color:#0f0;text-shadow:0 0 3px #000}}'
+    : ''
   const payload =
     `<!-- ${INJECT_MARKER} -->` +
-    `<style id="${INJECT_MARKER}-css">${ADAPT_CSS}</style>` +
+    `<style id="${INJECT_MARKER}-css">${ADAPT_CSS}${markerCss}</style>` +
+    `<script src="/console-ping?v=1"></script>` +
     `<script id="${INJECT_MARKER}-js">${ADAPT_JS}</` + `script>`
   return insertBeforeHeadEnd(html, payload)
 }

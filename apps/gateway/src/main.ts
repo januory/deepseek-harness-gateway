@@ -120,6 +120,15 @@ app.post('/console-diag', async (req, reply) => {
   return reply.code(204).send()
 })
 
+// External-script probe referenced by the injected console document: a logged
+// GET here proves the browser actually parsed and executed our injected HTML
+// (some vendor browsers appear to render a cached/un-injected copy instead).
+app.get('/console-ping', async (req, reply) => {
+  const ua = String(req.headers['user-agent'] ?? '').slice(0, 120)
+  console.log(`[console-diag] ping ua=${ua} at=${new Date().toISOString()}`)
+  return reply.type('application/javascript').header('Cache-Control', 'no-store').send('/* console-ping */')
+})
+
 // wscheck echo server: text frames echo as 'echo:<payload>'; the first text
 // frame answers 'pong:hello'. Compression disabled (mirrors console mux).
 const wscheckWss = new WebSocketServer({ noServer: true, perMessageDeflate: false })
