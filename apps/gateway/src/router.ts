@@ -150,6 +150,15 @@ export function relayHttp(
           )
           if (htmlBuf !== null) {
             const out = pendingHeaders
+            // Never let HTTP caches (incl. vendor accelerator layers) reuse the
+            // console document: an injected copy must always be what the browser
+            // parses. Some vendor built-in browsers render a cached pre-injection
+            // copy while the gateway still logs the upstream fetch.
+            if (out !== null) {
+              out['cache-control'] = 'no-store'
+              delete out.etag
+              delete out['last-modified']
+            }
             const withTransport = injectTransportOwnership(htmlBuf)
             const bodyText = CONSOLE_ADAPT_ENABLED
               ? injectMobileAdapt(withTransport, { marker: upstreamPath.includes('gwmark') })
