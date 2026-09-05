@@ -114,6 +114,20 @@ body.dsh-gw-mobile [class$="_input"],body.dsh-gw-mobile textarea,body.dsh-gw-mob
 body.dsh-gw-mobile [class$="_composer"]{padding-bottom:calc(4px + env(safe-area-inset-bottom))}
 /* Slightly smaller message type on phones. */
 body.dsh-gw-mobile [class$="_scrollBody"] [class$="_root"],body.dsh-gw-mobile [class$="_scrollBody"] [class$="_bubble"]{font-size:14.5px}
+/* Settings dialog: the desktop panel is a two-column layout (188px nav + 157px
+   options) that collapses field rows to ~101px on a 390px phone, which forces
+   labels/values into one-character-per-line vertical text. Stack a horizontally
+   scrollable nav (tabs) above a full-width, scrollable options body instead. */
+body.dsh-gw-mobile [class$="_overlay"]{padding:0!important;align-items:stretch!important;justify-content:stretch!important}
+body.dsh-gw-mobile [class$="_panel"]{width:100vw!important;max-width:100vw!important;height:100dvh!important;max-height:100dvh!important;flex-direction:column!important}
+body.dsh-gw-mobile [class$="_panel"]>[class$="_nav"]{width:100%!important;height:auto!important;flex:0 0 auto!important;flex-direction:row!important;overflow-x:auto!important;border-right:none!important;border-bottom:1px solid rgba(127,127,127,.25)!important}
+body.dsh-gw-mobile [class$="_panel"]>[class$="_nav"] [class$="_navList"]{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;overflow-x:auto!important;width:auto!important;height:auto!important;gap:4px!important;padding:8px 10px!important}
+body.dsh-gw-mobile [class$="_panel"]>[class$="_nav"] [class$="_navCell"]{flex:0 0 auto!important;white-space:nowrap!important;padding:8px 12px!important;border-radius:8px!important}
+body.dsh-gw-mobile [class$="_panel"]>[class$="_nav"] [class$="_navTitle"]{white-space:nowrap!important;padding:10px!important}
+body.dsh-gw-mobile [class$="_panel"]>[class$="_content"]{width:100%!important;flex:1 1 auto!important;display:flex!important;flex-direction:column!important;overflow:hidden!important}
+body.dsh-gw-mobile [class$="_panel"]>[class$="_content"] [class$="_options"]{width:100%!important;flex:1 1 auto!important;overflow-y:auto!important;padding:4px 12px!important}
+body.dsh-gw-mobile [class$="_panel"] [class$="_section"],body.dsh-gw-mobile [class$="_panel"] [class$="_row"]{width:100%!important;min-width:0!important}
+body.dsh-gw-mobile [class$="_panel"] [class$="_rowText"],body.dsh-gw-mobile [class$="_panel"] [class$="_desc"]{min-width:0!important}
 `
 
 /**
