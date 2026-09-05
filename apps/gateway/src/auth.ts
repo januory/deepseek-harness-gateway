@@ -35,7 +35,7 @@ export function verifyPassword(plain: string, stored: string): boolean {
 }
 
 export class SessionStore {
-  private sessions = new Map<string, { userId: string; expiresAt: number }>()
+  private sessions = new Map<string, { userId: string; expiresAt: number; machineId?: string }>()
 
   create(userId: string): string {
     const id = randomBytes(32).toString('hex')
@@ -52,6 +52,36 @@ export class SessionStore {
     }
     s.expiresAt = Date.now() + SESSION_TTL_MS // sliding renewal
     return { userId: s.userId }
+  }
+
+  /**
+   * Bind a session to the console machine it is currently operating. The
+   * relayed dsh console issues every /api, /plugins, /assets and WebSocket
+   * request as an absolute path — the dsh client bases them on
+   * `location.origin` (see packages/client/connection resolveBase), which is
+   * the gateway, so they carry NO machineId. With more than one connected node
+   * the single-node passthrough (`singleNodeId()`) can't disambiguate them and
+   * 503s them. The gateway thus routes those machine-less paths to the machine
+   * this session is bound to. Bound when the session opens a `/console/<id>`
+   * page; overridden on the most recent console the session opened.
+   */
+  bindMachine(id: string, machineId: string): void {
+    const s = this.sessions.get(id)
+    if (s) {
+      s.machineId = machineId
+      s.expiresAt = Date.now() + SESSION_TTL_MS
+    }
+  }
+
+  /** The console machine this session is bound to, or undefined. */
+  machineOf(id: string): string | undefined {
+    const s = this.sessions.get(id)
+    if (!s) return undefined
+    if (Date.now() > s.expiresAt) {
+      this.sessions.delete(id)
+      return undefined
+    }
+    return s.machineId
   }
 
   destroy(id: string): void {

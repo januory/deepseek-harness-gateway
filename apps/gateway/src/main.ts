@@ -105,7 +105,7 @@ for (const code of (CLI.DSH_GATEWAY_PAIRING_CODES ?? process.env.DSH_GATEWAY_PAI
 registry.start()
 
 // Console HTTP relay → node → local dsh web.
-registerRouter(app, registry, store)
+registerRouter(app, registry, store, auth)
 
 // Portal-user auth (session cookie + login/logout/me).
 await auth.register(app, store)
@@ -253,7 +253,11 @@ async function handleBrowserUpgrade(req: any, socket: any, head: Buffer): Promis
     machineId = segs[1]
     upstreamPath = '/' + segs.slice(2).join('/') + u.search
   } else {
-    machineId = registry.singleNodeId()
+    // Machine-less console paths (the page issues /api/remote.mux etc. as
+    // absolute URLs with no machineId): route to the session's bound machine
+    // first, then the single-node passthrough.
+    const bound = getCookie(req.headers.cookie, SESSION_COOKIE)
+    machineId = (bound ? auth.sessions.machineOf(bound) : undefined) ?? registry.singleNodeId()
     upstreamPath = u.pathname + u.search
   }
   if (!machineId) {

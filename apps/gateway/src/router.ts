@@ -7,6 +7,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { IStore } from 'dsh-gateway-store'
 import type { NodeRegistry } from './nodes.js'
 import { authorizeConsole } from './authz.js'
+import { SESSION_COOKIE, type Auth } from './auth.js'
 import { CONSOLE_ADAPT_ENABLED, injectMobileAdapt, injectTransportOwnership } from './console-adapt.js'
 
 const FORWARD_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'] as const
@@ -175,7 +176,7 @@ export function relayHttp(
   }
 }
 
-export function registerRouter(app: FastifyInstance, registry: NodeRegistry, store: IStore): void {
+export function registerRouter(app: FastifyInstance, registry: NodeRegistry, store: IStore, auth: Auth): void {
   // Register the relay under its own encapsulated scope so the raw-buffer body
   // parser only applies here — control-plane routes (app-level) keep Fastify's
   // default JSON parsing.
@@ -190,14 +191,26 @@ export function registerRouter(app: FastifyInstance, registry: NodeRegistry, sto
     scoped.addContentTypeParser('*', rawBodyParser)
     scoped.addContentTypeParser('application/json', rawBodyParser)
 
+    /** The console machine this session is bound to, or undefined. */
+    const sessionMachine = (req: FastifyRequest): string | undefined => {
+      const token = req.cookies?.[SESSION_COOKIE]
+      return token ? auth.sessions.machineOf(token) : undefined
+    }
+
     const consoleAuthz = async (req: FastifyRequest, reply: FastifyReply) => {
       const machineId = (req.params as any).machineId as string
       const res = await authorizeConsole(store, req.user, machineId)
       if (!res.allowed) return reply.code(res.status).send({ error: res.error, heldBy: res.heldBy })
+      // Bind this session to the machine whose console it just opened. The
+      // relayed page then issues its /api, /plugins, /assets and WebSocket
+      // requests as machine-less absolute paths; those are routed to this
+      // machine by the /* passthrough below (and the WS upgrade in main.ts).
+      const token = req.cookies?.[SESSION_COOKIE]
+      if (token) auth.sessions.bindMachine(token, machineId)
     }
 
     const singleNodeAuthz = async (req: FastifyRequest, reply: FastifyReply) => {
-      const mid = registry.singleNodeId()
+      const mid = sessionMachine(req) ?? registry.singleNodeId()
       if (!mid) return reply.code(503).send({ error: 'no connected node' })
       const res = await authorizeConsole(store, req.user, mid)
       if (!res.allowed) return reply.code(res.status).send({ error: res.error, heldBy: res.heldBy })
@@ -219,14 +232,17 @@ export function registerRouter(app: FastifyInstance, registry: NodeRegistry, sto
       })
     }
 
-    // Single-node passthrough: relay absolute dsh paths (/api, /plugins, /assets, …).
+    // Machine-less passthrough: relay the absolute dsh paths (/api, /plugins,
+    // /assets, …) the console page issues. These carry no machineId, so route
+    // them to the session's bound machine first; fall back to the single-node
+    // passthrough for sessions that haven't opened a console (or the portal).
     for (const method of FORWARD_METHODS) {
       scoped.route({
         method,
         url: '/*',
         preHandler: singleNodeAuthz,
         handler: async (req, reply) => {
-          const mid = registry.singleNodeId()
+          const mid = sessionMachine(req) ?? registry.singleNodeId()
           if (!mid) return reply.code(503).send({ error: 'no connected node' })
           await relayHttp(registry, mid, req, reply, req.raw.url ?? '/')
         },
