@@ -7,17 +7,21 @@
 // so phones reach the conversation reliably without touching the node).
 //
 // Mechanism: relayHttp() buffers small text/html GET responses from the node
-// and calls injectMobileAdapt() before streaming them out. The injected
-// <style> + <script> only activate when the viewport is portrait, has a coarse
-// pointer and is narrower than 1100px (sessionStorage 'dsh-gw-force-desktop=1'
-// opts out) — desktop and landscape stay visually untouched.
+// and passes them through the injection helpers before streaming them out.
+// `injectTransportOwnership()` always declares the relayed page as the
+// operator's own console (settings durability); `injectMobileAdapt()` adds the
+// viewport layer, whose <style> + <script> only activate when the viewport is
+// portrait, has a coarse pointer and is narrower than 1100px (sessionStorage
+// 'dsh-gw-force-desktop=1' opts out) — desktop and landscape stay visually
+// untouched.
 //
 // Selector strategy mirrors dsh-remote-web-ui: this cohort's CSS Modules
 // classes are hash-prefixed with the semantic name as a stable suffix
 // (e.g. `T62Cia_centerCol`), so [class$="_centerCol"] survives rebuilds that
 // only change the hash prefix.
 //
-// Kill switch: DSH_GATEWAY_CONSOLE_ADAPT=0 disables injection entirely.
+// Kill switch: DSH_GATEWAY_CONSOLE_ADAPT=0 disables the mobile-adapt layer
+// (transport ownership stays injected either way).
 // Debug aid: open the console with ?gwAdaptDebug=1 to show a live pill with
 // viewport/column geometry.
 
@@ -25,6 +29,46 @@ export const CONSOLE_ADAPT_ENABLED = process.env.DSH_GATEWAY_CONSOLE_ADAPT !== '
 
 /** Marker placed in injected pages so a proxy chain cannot double-inject. */
 const INJECT_MARKER = 'dsh-gw-mobile-adapt'
+
+/** Marker for the transport-ownership injection (also proxy-chain guarded). */
+const TRANSPORT_MARKER = 'dsh-gw-transport-owner'
+
+/**
+ * Insert one injection payload before </head> (falling back to </body> or
+ * document end), shared by every console-HTML injection.
+ * @param html - the upstream index document (UTF-8 text).
+ * @param payload - the markup/script block to insert.
+ * @returns the document with the payload inserted.
+ */
+function insertBeforeHeadEnd(html: string, payload: string): string {
+  const headEnd = html.indexOf('</head>')
+  if (headEnd !== -1) return html.slice(0, headEnd) + payload + html.slice(headEnd)
+  const bodyEnd = html.lastIndexOf('</body>')
+  if (bodyEnd !== -1) return html.slice(0, bodyEnd) + payload + html.slice(bodyEnd)
+  return html + payload
+}
+
+/**
+ * Inject the transport-ownership override into one relayed console HTML
+ * document. The relayed page runs under the gateway's authority, not the
+ * node's loopback, so the dsh client classifies it as a non-loopback page and
+ * disables Host settings persistence (Settings → Model then reports "settings
+ * are unavailable in this browser"). Declaring `ownsHost` on the
+ * `__DSH_TRANSPORT__` carrier makes `ctx.connection.isLoopback` report the
+ * privileged surface as reachable, without replacing the page's HTTP/WebSocket
+ * transport — the relay already carries those.
+ * @param html - the upstream index document (UTF-8 text).
+ * @returns the document with the ownership script inserted before </head> (or </body>).
+ */
+export function injectTransportOwnership(html: string): string {
+  if (html.includes(TRANSPORT_MARKER)) return html
+  const payload =
+    `<!-- ${TRANSPORT_MARKER} -->` +
+    `<script id="${TRANSPORT_MARKER}-js">` +
+    `(function(){var t=window.__DSH_TRANSPORT__||(window.__DSH_TRANSPORT__={});t.ownsHost=true})();` +
+    `</` + `script>`
+  return insertBeforeHeadEnd(html, payload)
+}
 
 /**
  * Inject the mobile-adapt layer into one relayed console HTML document.
@@ -37,15 +81,7 @@ export function injectMobileAdapt(html: string): string {
     `<!-- ${INJECT_MARKER} -->` +
     `<style id="${INJECT_MARKER}-css">${ADAPT_CSS}</style>` +
     `<script id="${INJECT_MARKER}-js">${ADAPT_JS}</` + `script>`
-  const headEnd = html.indexOf('</head>')
-  if (headEnd !== -1) {
-    return html.slice(0, headEnd) + payload + html.slice(headEnd)
-  }
-  const bodyEnd = html.lastIndexOf('</body>')
-  if (bodyEnd !== -1) {
-    return html.slice(0, bodyEnd) + payload + html.slice(bodyEnd)
-  }
-  return html + payload
+  return insertBeforeHeadEnd(html, payload)
 }
 
 /**
