@@ -158,7 +158,6 @@ class Connection {
       if (this.ws !== ws) return // stale socket superseded by a newer connect
       this.lastSeen = Date.now()
       const data = Buffer.isBuffer(raw) ? raw : Buffer.from(raw)
-      if (!isBinary) console.log('[dsh-gateway-agent] msg:', data.toString('utf8').slice(0, 80))
       if (isBinary) {
         for (const frame of this.parser.push(data)) {
           const e = this.wsUpstreams.get(frame.channel)
@@ -179,7 +178,8 @@ class Connection {
         return
       }
 
-      console.log('[dsh-gateway-agent] recv', msg.type, msg.payload && msg.payload.path ? msg.payload.path : '')
+      if (msg.payload && msg.payload.path)
+        console.log('[dsh-gateway-agent] recv', msg.type, msg.payload.path)
 
       if (msg.type === ControlType.CHALLENGE) {
         // Reconnect with the issued node key; otherwise onboard with the pairing code.
