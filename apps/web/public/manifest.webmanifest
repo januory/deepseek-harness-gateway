@@ -1,0 +1,17 @@
+{
+  "name": "DSH-Gateway",
+  "short_name": "DSH-Gateway",
+  "description": "DeepSeek-Harness 多租户网关门户：机器目录 / 用户 / 分配 / 配对码 / 审计 / 设置",
+  "lang": "zh-CN",
+  "start_url": "/portal/",
+  "scope": "/portal/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#4d6bfe",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
