@@ -12,17 +12,22 @@ type SettingsTab = 'account' | 'system'
 // reaches the login page. Poll `/health` until the new process is reachable, then
 // hard-reload so the freshly-built portal and the now-invalid session are picked
 // up — landing the user on the login page instead of a stale or error screen.
-function waitForGatewayUp(timeoutMs = 60_000, pollMs = 750): Promise<void> {
+//
+// Resolves `true` only when the gateway actually answered `/health` (the refresh
+// gate), and `false` on timeout so the caller does NOT reload into a page that is
+// still down. A non-ok response (e.g. a 503 during a portal rebuild) keeps polling
+// rather than treating a functioning-but-rebuilding process as "not up".
+function waitForGatewayUp(timeoutMs = 60_000, pollMs = 750): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
   return new Promise((resolve) => {
     const tick = async () => {
       try {
         const res = await fetch('/health', { credentials: 'same-origin', cache: 'no-store' })
-        if (res.ok) return void resolve()
+        if (res.ok) return void resolve(true)
       } catch {
         /* gateway not reachable yet — keep polling */
       }
-      if (Date.now() >= deadline) return void resolve()
+      if (Date.now() >= deadline) return void resolve(false)
       setTimeout(tick, pollMs)
     }
     void tick()
@@ -98,10 +103,17 @@ export function SettingsView({ me }: { me: PublicUser }) {
     }
     setUpdating(false)
     // The gateway reloads (in-memory sessions are cleared) → drop to the fresh
-    // login page once the new process answers.
+    // login page once the new process answers. We only refresh when /health
+    // actually answers; if the gateway never comes back, keep the user here with
+    // a clear message instead of reloading into a page that is still down.
     setReloading(true)
-    await waitForGatewayUp()
-    window.location.reload()
+    const up = await waitForGatewayUp()
+    if (up) {
+      window.location.reload()
+    } else {
+      setReloading(false)
+      setErr('服务重载超时：网关在 60 秒内未恢复。若页面仍无法访问，请稍后手动刷新。')
+    }
   }
 
   async function doChangePassword() {
