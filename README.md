@@ -90,6 +90,16 @@ environment variable, or a built-in default (CLI flag > env var > default):
 | `DSH_GATEWAY_ADMIN_PASSWORD` | `--admin-password <pw>` | `admin` |
 | `DSH_GATEWAY_PAIRING_CODES` | `--pairing-codes <a,b>` | *(none)* |
 | `DSH_GATEWAY_WEB_DIST` | `--web-dist <dir>` | *auto-detect* |
+| `DSH_GATEWAY_TRUST_PROXY` | `--trust-proxy <0\|1>` | `0` |
+| `DSH_GATEWAY_COOKIE_SECURE` | `--cookie-secure <0\|1>` | *auto (via `https`)* |
+| `DSH_GATEWAY_ALLOW_DEFAULT_ADMIN` | `--allow-default-admin 1` | *off* |
+| `DSH_GATEWAY_LOGIN_IP_MAX` | *(env only)* | `10` |
+| `DSH_GATEWAY_LOGIN_IP_WINDOW_MS` | *(env only)* | `900000` (15 min) |
+| `DSH_GATEWAY_LOGIN_ACCOUNT_MAX` | *(env only)* | `5` |
+| `DSH_GATEWAY_LOGIN_ACCOUNT_WINDOW_MS` | *(env only)* | `900000` (15 min) |
+| `DSH_GATEWAY_SESSION_IDLE_TTL_MS` | *(env only)* | `28800000` (8 h) |
+| `DSH_GATEWAY_SESSION_ABSOLUTE_TTL_MS` | *(env only)* | `86400000` (24 h) |
+| `DSH_GATEWAY_SESSION_MAX` | *(env only)* | `10000` |
 
 ```sh
 dshgw --host 0.0.0.0 --port 8080 --db ./gw.db --admin-id admin --admin-password secret --pairing-codes 'code1,code2'
@@ -97,6 +107,11 @@ dshgw --help   # list every flag
 ```
 
 Docker-only env vars (no CLI flag): `DSH_GATEWAY_BUILD_CMD` (default `pnpm -r build`), `DSH_GATEWAY_SRC_DIR` (default `/app/source`), `DSH_GATEWAY_PNPM_STORE` (default `/data/pnpm-store`).
+
+**Production security checklist** (see `docs/security-hardening-plan.md`):
+- Terminate TLS at a reverse proxy and set `DSH_GATEWAY_TRUST_PROXY=1` so per-IP login throttling sees the real client; the session cookie gets `Secure` automatically over `https`.
+- Set a strong `DSH_GATEWAY_ADMIN_PASSWORD`. On a non-loopback bind or `NODE_ENV=production`, the gateway **refuses to start** with the default password unless `DSH_GATEWAY_ALLOW_DEFAULT_ADMIN=1` is set explicitly.
+- `/nodes` requires a logged-in session (admins see all machines, regular users only their assigned ones); `/health` returns only `{ "ok": true }`.
 
 Install the agent plugin into a customer machine's dsh (web profile):
 

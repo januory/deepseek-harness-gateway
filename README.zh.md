@@ -89,6 +89,16 @@ dshgw                              # http://127.0.0.1:3300/health
 | `DSH_GATEWAY_ADMIN_PASSWORD` | `--admin-password <pw>` | `admin` |
 | `DSH_GATEWAY_PAIRING_CODES` | `--pairing-codes <a,b>` | （无） |
 | `DSH_GATEWAY_WEB_DIST` | `--web-dist <dir>` | 自动探测 |
+| `DSH_GATEWAY_TRUST_PROXY` | `--trust-proxy <0\|1>` | `0` |
+| `DSH_GATEWAY_COOKIE_SECURE` | `--cookie-secure <0\|1>` | 自动（按 `https`） |
+| `DSH_GATEWAY_ALLOW_DEFAULT_ADMIN` | `--allow-default-admin 1` | 关闭 |
+| `DSH_GATEWAY_LOGIN_IP_MAX` | （仅环境变量） | `10` |
+| `DSH_GATEWAY_LOGIN_IP_WINDOW_MS` | （仅环境变量） | `900000`（15 分钟） |
+| `DSH_GATEWAY_LOGIN_ACCOUNT_MAX` | （仅环境变量） | `5` |
+| `DSH_GATEWAY_LOGIN_ACCOUNT_WINDOW_MS` | （仅环境变量） | `900000`（15 分钟） |
+| `DSH_GATEWAY_SESSION_IDLE_TTL_MS` | （仅环境变量） | `28800000`（8 小时） |
+| `DSH_GATEWAY_SESSION_ABSOLUTE_TTL_MS` | （仅环境变量） | `86400000`（24 小时） |
+| `DSH_GATEWAY_SESSION_MAX` | （仅环境变量） | `10000` |
 
 ```sh
 dshgw --host 0.0.0.0 --port 8080 --db ./gw.db --admin-id admin --admin-password secret --pairing-codes 'code1,code2'
@@ -96,6 +106,11 @@ dshgw --help   # 列出全部参数
 ```
 
 仅 Docker 使用的环境变量（无命令行参数）：`DSH_GATEWAY_BUILD_CMD`（默认 `pnpm -r build`）、`DSH_GATEWAY_SRC_DIR`（默认 `/app/source`）、`DSH_GATEWAY_PNPM_STORE`（默认 `/data/pnpm-store`）。
+
+**生产部署安全清单**（详见 `docs/security-hardening-plan.md`）：
+- 在反向代理处终止 TLS 并设置 `DSH_GATEWAY_TRUST_PROXY=1`，使按 IP 的登录限流看到真实客户端；会话 Cookie 在 `https` 下自动带 `Secure`。
+- 设置强口令 `DSH_GATEWAY_ADMIN_PASSWORD`。非 loopback 绑定或 `NODE_ENV=production` 时，若仍使用默认口令，网关会**拒绝启动**，除非显式设置 `DSH_GATEWAY_ALLOW_DEFAULT_ADMIN=1`。
+- `/nodes` 需登录（管理员可见全部机器，普通用户仅可见分配给自己的机器）；`/health` 仅返回 `{ "ok": true }`。
 
 把接入插件装进客户机的 dsh（web profile）：
 
