@@ -107,7 +107,7 @@ dshgw --help   # 列出全部参数
 
 仅 Docker 使用的环境变量（无命令行参数）：`DSH_GATEWAY_BUILD_CMD`（默认 `pnpm -r build`）、`DSH_GATEWAY_SRC_DIR`（默认 `/app/source`）、`DSH_GATEWAY_PNPM_STORE`（默认 `/data/pnpm-store`）。
 
-**生产部署安全清单**（详见 `docs/security-hardening-plan.md`）：
+**生产部署安全清单**：
 - 在反向代理处终止 TLS 并设置 `DSH_GATEWAY_TRUST_PROXY=1`，使按 IP 的登录限流看到真实客户端；会话 Cookie 在 `https` 下自动带 `Secure`。
 - 设置强口令 `DSH_GATEWAY_ADMIN_PASSWORD`。非 loopback 绑定或 `NODE_ENV=production` 时，若仍使用默认口令，网关会**拒绝启动**，除非显式设置 `DSH_GATEWAY_ALLOW_DEFAULT_ADMIN=1`。
 - `/nodes` 需登录（管理员可见全部机器，普通用户仅可见分配给自己的机器）；`/health` 仅返回 `{ "ok": true }`。

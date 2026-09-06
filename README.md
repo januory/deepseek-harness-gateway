@@ -108,7 +108,7 @@ dshgw --help   # list every flag
 
 Docker-only env vars (no CLI flag): `DSH_GATEWAY_BUILD_CMD` (default `pnpm -r build`), `DSH_GATEWAY_SRC_DIR` (default `/app/source`), `DSH_GATEWAY_PNPM_STORE` (default `/data/pnpm-store`).
 
-**Production security checklist** (see `docs/security-hardening-plan.md`):
+**Production security checklist**:
 - Terminate TLS at a reverse proxy and set `DSH_GATEWAY_TRUST_PROXY=1` so per-IP login throttling sees the real client; the session cookie gets `Secure` automatically over `https`.
 - Set a strong `DSH_GATEWAY_ADMIN_PASSWORD`. On a non-loopback bind or `NODE_ENV=production`, the gateway **refuses to start** with the default password unless `DSH_GATEWAY_ALLOW_DEFAULT_ADMIN=1` is set explicitly.
 - `/nodes` requires a logged-in session (admins see all machines, regular users only their assigned ones); `/health` returns only `{ "ok": true }`.
