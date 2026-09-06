@@ -110,7 +110,7 @@ body.dsh-gw-mobile [class$="_logoRow"] [class*="_iconButton"],body.dsh-gw-mobile
 /* Do NOT pin/rewrite the AppFrame grid columns on the current cohort. The
    modern shell (ui-layout AppFrame) computes a correct narrow layout natively
    (collapsed 56px rail + 1fr center + 0 details via computeColumns), so an
-   injected `grid-template-columns:0 1fr 0 !important` override is redundant —
+   injected grid-template-columns:0 1fr 0 !important override is redundant —
    and on WebKit it re-lays-out the grid when a queued message is steered in,
    squeezing the center column out and blanking the conversation. Leave the
    native grid alone. */
