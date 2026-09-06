@@ -155,7 +155,11 @@ export function relayHttp(
             }
             const withTransport = injectTransportOwnership(htmlBuf)
             const bodyText = CONSOLE_ADAPT_ENABLED
-              ? injectMobileAdapt(withTransport, { marker: upstreamPath.includes('mark=1') })
+              ? injectMobileAdapt(withTransport, {
+                  marker: upstreamPath.includes('mark=1'),
+                  css: !upstreamPath.includes('gwNoCss=1'),
+                  js: !upstreamPath.includes('gwNoJs=1'),
+                })
               : withTransport
             if (!raw.headersSent && out !== null) raw.writeHead(pendingStatus, out)
             pendingHeaders = null

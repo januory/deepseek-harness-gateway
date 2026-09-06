@@ -79,15 +79,19 @@ export function injectTransportOwnership(html: string): string {
  *   console URL with ?gwmark=1).
  * @returns the document with the layer inserted before </head> (or </body>).
  */
-export function injectMobileAdapt(html: string, opts: { marker?: boolean } = {}): string {
+export function injectMobileAdapt(html: string, opts: { marker?: boolean; css?: boolean; js?: boolean } = {}): string {
   if (html.includes(INJECT_MARKER)) return html
+  // ?gwNoCss=1 strips the injected <style>; ?gwNoJs=1 strips the injected
+  // <script>. Both default to on; used as a no-DevTools A/B bisect for the
+  // "conversation blanks on portrait while a queued message is steered" bug.
+  const showCss = opts.css !== false
+  const showJs = opts.js !== false
   const markerCss = opts.marker
     ? '\n@media (max-width:1100px) and (orientation:portrait){html>body::after{content:"◉";position:fixed;right:6px;top:6px;z-index:2147483647;font:20px/1 sans-serif;color:#0f0;text-shadow:0 0 3px #000}}'
     : ''
-  const payload =
-    `<!-- ${INJECT_MARKER} -->` +
-    `<style id="${INJECT_MARKER}-css">${ADAPT_CSS}${markerCss}</style>` +
-    `<script id="${INJECT_MARKER}-js">${ADAPT_JS}</` + `script>`
+  let payload = `<!-- ${INJECT_MARKER} -->`
+  if (showCss) payload += `<style id="${INJECT_MARKER}-css">${ADAPT_CSS}${markerCss}</style>`
+  if (showJs) payload += `<script id="${INJECT_MARKER}-js">${ADAPT_JS}</` + `script>`
   return insertBeforeHeadEnd(html, payload)
 }
 
