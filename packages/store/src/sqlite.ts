@@ -77,10 +77,13 @@ export class SqliteStore implements IStore {
     this.db = drizzle(this.raw, { schema })
 
     if (this.options.runMigrations !== false) {
-      // Resolve the committed drizzle migrations relative to this source file
-      // (works under tsx; the compiled dist would need the folder copied).
-      const folder = join(dirname(fileURLToPath(import.meta.url)), '..', 'drizzle')
-      if (existsSync(join(folder, 'meta', '_journal.json'))) {
+      // Resolve the committed drizzle migrations. In dev (tsx) they live at
+      // ../drizzle alongside the store package; in the published dshgw bundle
+      // apps/gateway/scripts/bundle.mjs copies them into dist/drizzle. Try both.
+      const here = dirname(fileURLToPath(import.meta.url))
+      const candidates = [join(here, '..', 'drizzle'), join(here, 'drizzle')]
+      const folder = candidates.find((c) => existsSync(join(c, 'meta', '_journal.json')))
+      if (folder) {
         migrate(this.db, { migrationsFolder: folder })
       }
     }

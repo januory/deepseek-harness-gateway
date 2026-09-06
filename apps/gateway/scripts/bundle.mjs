@@ -61,6 +61,22 @@ function copyPortal() {
   console.log(`[build] portal copied into dist/portal (${dst})`)
 }
 
+// Drizzle migrations: packages/store/drizzle is NOT inlined by esbuild, so the
+// bundle must copy it into dist/drizzle or a fresh DB has no schema and the
+// server crashes at bootstrap (SqliteStore only migrates when it can find them).
+function copyMigrations() {
+  const src = join(pkgDir, '..', '..', 'packages', 'store', 'drizzle')
+  const dst = join(pkgDir, 'dist', 'drizzle')
+  if (!existsSync(src)) {
+    console.log('[build] store drizzle migrations not found -> migrations unavailable in bundle')
+    return
+  }
+  mkdirSync(dst, { recursive: true })
+  cpSync(src, dst, { recursive: true })
+  console.log(`[build] migrations copied into dist/drizzle (${dst})`)
+}
+
 await bundle()
 copyPortal()
+copyMigrations()
 console.log(`[build] bundled dshgw -> ${outfile}`)
