@@ -113,13 +113,21 @@ html,body{height:100%}
    mobile bug). _railFish does not exist in this cohort, so it matched
    nothing; the toggle button lives in _logoRow (class ..._iconButton). */
 body.dsh-gw-mobile [class$="_logoRow"] [class*="_iconButton"],body.dsh-gw-mobile [class$="_newSession"]{min-width:44px;min-height:44px}
-/* Do NOT pin/rewrite the AppFrame grid columns on the current cohort. The
-   modern shell (ui-layout AppFrame) computes a correct narrow layout natively
-   (collapsed 56px rail + 1fr center + 0 details via computeColumns), so an
-   injected grid-template-columns:0 1fr 0 !important override is redundant —
-   and on WebKit it re-lays-out the grid when a queued message is steered in,
-   squeezing the center column out and blanking the conversation. Leave the
-   native grid alone. */
+/* Collapsed rail on phones: pin it to a 0-width track so the sidebar is
+   fully hidden and the conversation fills the frame — the floating toggle
+   (ADAPT_JS) is then the collapsed rail's only phone entry. The AppFrame's
+   native narrow solve keeps a 56px icon rail, which has no place on a
+   390px phone; the iOS-verified dsh-web reference zeros the track instead.
+   (A WebKit "conversation blanks when a queued message is steered in"
+   regression was originally blamed on this override and it was dropped in
+   ef09fd0; the real cause was the settings-dialog _panel rules matching the
+   queue dock's own .panel, fixed by scoping every _panel rule under the
+   settings _overlay further down. Keeping the collapsed track pinned to 0 is
+   safe now.) */
+body.dsh-gw-mobile [class$="_frame"][data-sidebar-collapsed]{grid-template-columns:0 minmax(0,1fr) 0 !important}
+body.dsh-gw-mobile [class$="_frame"][data-sidebar-collapsed] [class$="_sidebarCol"]{grid-column:1/2}
+body.dsh-gw-mobile [class$="_frame"][data-sidebar-collapsed] [class$="_centerCol"]{grid-column:2/3}
+body.dsh-gw-mobile [class$="_frame"][data-sidebar-collapsed] [class$="_detailsCol"]{grid-column:3/4}
 /* The right-hand details column has no room on a phone; hide it entirely. */
 body.dsh-gw-mobile [class$="_detailsCol"]{display:none !important}
 /* On touch, taps leave :hover/:focus stuck, so official Tooltip bubbles stay
