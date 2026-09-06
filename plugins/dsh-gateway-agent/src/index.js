@@ -32,6 +32,10 @@ const NAMESPACE = 'gatewayAgent'
 // Keep in sync with package.json "version".
 const AGENT_VERSION = '0.1.2'
 
+// Verbose per-request relay logging (recv / forward / upstream) is opt-in via
+// DSH_AGENT_DEBUG=1; normal operation stays quiet.
+const DEBUG = ['1', 'true', 'yes'].includes(String(process.env.DSH_AGENT_DEBUG || '').toLowerCase())
+
 // ---------------------------------------------------------------------------
 // Config: self-owned JSON via config.js (sealed secrets + browser-safe sanitize).
 // ---------------------------------------------------------------------------
@@ -178,7 +182,7 @@ class Connection {
         return
       }
 
-      if (msg.payload && msg.payload.path)
+      if (DEBUG && msg.payload && msg.payload.path)
         console.log('[dsh-gateway-agent] recv', msg.type, msg.payload.path)
 
       if (msg.type === ControlType.CHALLENGE) {
@@ -342,7 +346,7 @@ class Connection {
   }
 
   forwardUpstream(ws, channel, method, path, headers, body, retried) {
-    console.log('[dsh-gateway-agent] forward', method, path, 'dshPort=', this.dshPort)
+    if (DEBUG) console.log('[dsh-gateway-agent] forward', method, path, 'dshPort=', this.dshPort)
     const reqHeaders = { ...(headers || {}), host: `127.0.0.1:${this.dshPort}` }
     const cookie = this.effectiveCookie()
     if (cookie) reqHeaders.cookie = cookie
@@ -370,7 +374,7 @@ class Connection {
           }
         }
         if (res.statusCode && res.statusCode >= 400) {
-          console.log('[dsh-gateway-agent] upstream', res.statusCode, method, path, 'cookie=', cookie ? cookie.slice(0, 24) : 'MISSING', 'dshPort=', this.dshPort)
+          if (DEBUG) console.log('[dsh-gateway-agent] upstream', res.statusCode, method, path, 'cookie=', cookie ? cookie.slice(0, 24) : 'MISSING', 'dshPort=', this.dshPort)
         }
 
         // Send the response headers immediately, then stream body chunks as they
