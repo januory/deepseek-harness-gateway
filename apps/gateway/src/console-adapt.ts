@@ -99,8 +99,10 @@ export function injectMobileAdapt(html: string, opts: { marker?: boolean } = {})
  */
 const ADAPT_CSS = `
 html,body{height:100%}
-/* The app frame fills the dynamic viewport (browser chrome collapse). */
-body.dsh-gw-mobile [class$="_frame"]{width:100%;height:100dvh}
+/* Leave the AppFrame's native height:100% alone. A 100dvh override re-resolves
+   on iOS when the viewport changes (keyboard / queue-dock collapse) and a
+   WebKit grid re-layout then squeezes the center column, blanking the
+   conversation; the native 100% chain already fills the shell. */
 /* Sidebar controls: bigger touch targets — enlarge the BUTTON box, never the
    icon glyph. The _panelIcon class is the <svg> inside the toggle; forcing a
    min-width on it stretches the icon itself to 44px (the "huge button"
