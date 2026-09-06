@@ -32,8 +32,15 @@ async function req<T>(path: string, opts: RequestInit = {}): Promise<T> {
     let message = `HTTP ${res.status}`
     try {
       const body = await res.json()
-      if (body && (body as any).message) message = (body as any).message
-      else if (body && (body as any).error) message = (body as any).error
+      if (res.status === 429) {
+        const sec = Number((body as any)?.retryAfterSec) || Number(res.headers.get('retry-after')) || 60
+        const mins = Math.max(1, Math.ceil(sec / 60))
+        message = `尝试过多，请 ${mins} 分钟后再试`
+      } else if (body && (body as any).message) {
+        message = (body as any).message
+      } else if (body && (body as any).error) {
+        message = (body as any).error
+      }
     } catch {
       /* ignore */
     }
