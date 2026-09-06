@@ -4,12 +4,11 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { WebSocketServer } from 'ws'
-import { PROTOCOL_VERSION } from 'dsh-gateway-protocol'
 import { SqliteStore } from 'dsh-gateway-store'
 import { NodeRegistry } from './nodes.js'
 import { registerRouter } from './router.js'
 import { buildAuth, bootstrap, SESSION_COOKIE } from './auth.js'
-import { registerControl } from './control.js'
+import { isAdmin, registerControl } from './control.js'
 import { registerUpdater } from './updater.js'
 import { authorizeConsole, getCookie } from './authz.js'
 
@@ -26,6 +25,9 @@ const CLI_MAP: Record<string, string> = {
   'admin-password': 'DSH_GATEWAY_ADMIN_PASSWORD',
   'pairing-codes': 'DSH_GATEWAY_PAIRING_CODES',
   'web-dist': 'DSH_GATEWAY_WEB_DIST',
+  'trust-proxy': 'DSH_GATEWAY_TRUST_PROXY',
+  'cookie-secure': 'DSH_GATEWAY_COOKIE_SECURE',
+  'allow-default-admin': 'DSH_GATEWAY_ALLOW_DEFAULT_ADMIN',
 }
 function cliConfig(): Record<string, string> {
   const out: Record<string, string> = {}
@@ -47,6 +49,9 @@ function cliConfig(): Record<string, string> {
           '  --admin-password <pw>    bootstrap admin password (DSH_GATEWAY_ADMIN_PASSWORD, default admin)',
           '  --pairing-codes <a,b>    seed onboarding codes    (DSH_GATEWAY_PAIRING_CODES)',
           '  --web-dist <dir>         portal static dir        (DSH_GATEWAY_WEB_DIST)',
+          '  --trust-proxy <0|1>      trust reverse proxy       (DSH_GATEWAY_TRUST_PROXY, default 0)',
+          '  --cookie-secure <0|1>    force cookie Secure flag (DSH_GATEWAY_COOKIE_SECURE, default auto)',
+          '  --allow-default-admin 1  allow default admin creds (DSH_GATEWAY_ALLOW_DEFAULT_ADMIN)',
           '  -h, --help               show this help and exit',
           '',
         ].join('\n'),
@@ -78,16 +83,67 @@ const PORT = Number(CLI.DSH_GATEWAY_PORT ?? process.env.DSH_GATEWAY_PORT ?? 3300
 const DB_PATH = CLI.DSH_GATEWAY_DB_PATH ?? process.env.DSH_GATEWAY_DB_PATH ?? './gateway.db'
 // Bootstrap platform admin (created on first run).
 const ADMIN_ID = CLI.DSH_GATEWAY_ADMIN_ID ?? process.env.DSH_GATEWAY_ADMIN_ID ?? 'admin'
+const adminPasswordSet =
+  CLI.DSH_GATEWAY_ADMIN_PASSWORD !== undefined || process.env.DSH_GATEWAY_ADMIN_PASSWORD !== undefined
 const ADMIN_PASSWORD = CLI.DSH_GATEWAY_ADMIN_PASSWORD ?? process.env.DSH_GATEWAY_ADMIN_PASSWORD ?? 'admin'
 
-const app = Fastify({ logger: true })
+// trustProxy, so per-IP login throttling sees the real client behind nginx/TLS
+// instead of the proxy's own address (audit M-2). Boolean only: unset/`0`/`false`
+// disables it; anything else trusts the (single) reverse proxy.
+function parseTrustProxy(raw: string | undefined): boolean {
+  if (!raw) return false
+  const s = raw.trim().toLowerCase()
+  if (s === 'false' || s === '0') return false
+  return true
+}
+const TRUST_PROXY = parseTrustProxy(CLI.DSH_GATEWAY_TRUST_PROXY ?? process.env.DSH_GATEWAY_TRUST_PROXY)
+
+// Cookie Secure flag: env forces it; unset derives from req.protocol === 'https'
+// (see auth.ts register options). Plain-http loopback dev stays usable.
+function parseBoolEnv(raw: string | undefined): boolean | undefined {
+  if (raw === undefined) return undefined
+  const s = raw.trim().toLowerCase()
+  if (['1', 'true', 'yes', 'on'].includes(s)) return true
+  if (['0', 'false', 'no', 'off'].includes(s)) return false
+  return undefined
+}
+const COOKIE_SECURE = parseBoolEnv(CLI.DSH_GATEWAY_COOKIE_SECURE ?? process.env.DSH_GATEWAY_COOKIE_SECURE)
+
+// Fail-fast on default bootstrap credentials in production / on a non-loopback
+// bind (audit M-2), with an explicit escape hatch for local/dev containers.
+const ALLOW_DEFAULT_ADMIN =
+  (CLI.DSH_GATEWAY_ALLOW_DEFAULT_ADMIN ?? process.env.DSH_GATEWAY_ALLOW_DEFAULT_ADMIN) === '1'
+const LOOPBACK_HOST = HOST === '127.0.0.1' || HOST === 'localhost' || HOST === '::1'
+if (!ALLOW_DEFAULT_ADMIN && (process.env.NODE_ENV === 'production' || !LOOPBACK_HOST)) {
+  if (!adminPasswordSet || ADMIN_PASSWORD === 'admin') {
+    // eslint-disable-next-line no-console
+    console.error(
+      '[dshgw] refusing to start with the default admin password on a non-loopback/production bind — ' +
+        'set DSH_GATEWAY_ADMIN_PASSWORD (or DSH_GATEWAY_ALLOW_DEFAULT_ADMIN=1 to override)',
+    )
+    process.exit(1)
+  }
+}
+
+const app = Fastify({ logger: true, trustProxy: TRUST_PROXY })
+
+// Unified no-store for every JSON response (control plane + /nodes + /health)
+// so no proxy/cache reuses a stale sensitive body (audit M-1). Relay responses
+// bypass this (reply.hijack + raw socket) and set their own cache headers.
+app.addHook('onSend', async (request, reply, payload) => {
+  const ct = reply.getHeader('content-type')
+  if (ct && String(ct).toLowerCase().includes('application/json')) {
+    reply.header('Cache-Control', 'no-store, private')
+  }
+  return payload
+})
 
 const store = new SqliteStore({ filename: DB_PATH })
 await store.open()
 
 // Ensure the bootstrap system admin exists.
 await bootstrap(store, { adminId: ADMIN_ID, adminPassword: ADMIN_PASSWORD })
-if (CLI.DSH_GATEWAY_ADMIN_PASSWORD === undefined && process.env.DSH_GATEWAY_ADMIN_PASSWORD === undefined) {
+if (!adminPasswordSet) {
   app.log.warn('using default bootstrap admin password ("admin") — set DSH_GATEWAY_ADMIN_PASSWORD in production')
 }
 
@@ -108,7 +164,7 @@ registry.start()
 registerRouter(app, registry, store, auth)
 
 // Portal-user auth (session cookie + login/logout/me).
-await auth.register(app, store)
+await auth.register(app, store, { cookieSecure: COOKIE_SECURE })
 
 // Control-plane REST API (users/machines/assignments/pairing-codes/seats/audit).
 await registerControl(app, store, registry, auth)
@@ -118,17 +174,19 @@ await registerUpdater(app, auth, store)
 
 // no-store so the portal's post-update recovery poll (and any proxy/cache in
 // front of the gateway) always re-checks the live process instead of a stale body.
-app.get('/health', async (_req, reply) =>
-  reply.header('Cache-Control', 'no-store').send({
-    ok: true,
-    service: 'deepseek-harness-gateway',
-    version: '0.2.2',
-    protocol: PROTOCOL_VERSION,
-    connectedNodes: registry.connectedCount(),
-  }),
-)
+// Body is intentionally minimal (audit M-1): version/protocol/connectedNodes are
+// no longer exposed publicly.
+app.get('/health', async (_req, reply) => reply.header('Cache-Control', 'no-store').send({ ok: true }))
 
-app.get('/nodes', async () => ({ nodes: await registry.listNodes() }))
+// Live nodes for the portal: authenticated only; admins see every connected
+// machine, regular users only the ones assigned to them (audit M-1).
+app.get('/nodes', { preHandler: auth.requireRole() }, async (req) => {
+  const user = req.user!
+  const nodes = await registry.listNodes()
+  if (isAdmin(user)) return { nodes }
+  const assigned = new Set((await store.listAssignmentsForUser(user.id)).map((a) => a.machineId))
+  return { nodes: nodes.filter((n) => assigned.has(n.machineId)) }
+})
 
 // /wscheck — unauthenticated WebSocket self-test page. Opens a same-origin WS,
 // echoes text and a ~1MB binary frame, and prints what happened. Used to tell
