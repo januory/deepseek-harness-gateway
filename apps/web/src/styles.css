@@ -842,20 +842,45 @@ h3 {
 /* ---- in-portal console (iframe) -------------------------------------------------------------- */
 
 .console {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
 }
 
+/* Collapsible status bar. The row below animates its rendered height by
+   transitioning the grid track (0fr ↔ 1fr), so the collapse/expand follows the
+   real content height instead of a fixed max-height guess. */
 .console__bar {
+  display: grid;
+  grid-template-rows: 1fr;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+  transition: grid-template-rows 0.28s ease, border-color 0.28s ease;
+}
+
+.console__bar--collapsed {
+  grid-template-rows: 0fr;
+  border-bottom-color: transparent;
+}
+
+.console__bar-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 10px 16px;
-  border-bottom: 1px solid var(--border);
-  background: #fff;
-  flex: 0 0 auto;
+  min-height: 0;
+  overflow: hidden;
+  transition: padding 0.28s ease;
+}
+
+/* Collapse the row's vertical padding too, so the 0fr track closes flush
+   instead of leaving a residual height from the item's padding box. */
+.console__bar--collapsed .console__bar-row {
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .console__title {
@@ -865,9 +890,69 @@ h3 {
   min-width: 0;
 }
 
+.console__title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .console__actions {
   display: flex;
   gap: 8px;
+}
+
+/* Floating pill shown while the status bar is collapsed: restores the bar and
+   keeps the machine name visible. Sits above the iframe without blocking the
+   conversation's scroll area. */
+.console__expander {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(72%, 320px);
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: console-expander-in 0.2s ease;
+}
+
+.console__expander:hover {
+  background: #fff;
+  color: var(--text);
+}
+
+.console__expander svg {
+  flex: 0 0 auto;
+}
+
+.console__expander-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes console-expander-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }
 
 .console__frame {
@@ -1046,7 +1131,7 @@ h3 {
     margin-top: 10px;
   }
 
-  .console__bar {
+  .console__bar-row {
     flex-wrap: wrap;
     gap: 8px;
   }
