@@ -14,7 +14,7 @@ import { hashPassword, verifyPassword } from './auth.js'
 /** Roles that can manage machines/users/assignments/audit. */
 const ADMIN_ROLES: Role[] = ['admin', 'system-admin']
 
-function isAdmin(user: User): boolean {
+export function isAdmin(user: User): boolean {
   return user.role === 'system-admin' || user.role === 'admin'
 }
 
@@ -52,7 +52,7 @@ export async function registerControl(app: FastifyInstance, store: IStore, regis
     if (targetRole === 'system-admin' && user.role !== 'system-admin') {
       return reply.code(403).send({ error: 'only a system admin can create a system admin' })
     }
-    await store.upsertUser({ id, role: targetRole, authHash: hashPassword(password) })
+    await store.upsertUser({ id, role: targetRole, authHash: await hashPassword(password) })
     return { ok: true, user: { id, role: targetRole } }
   })
 
@@ -61,9 +61,9 @@ export async function registerControl(app: FastifyInstance, store: IStore, regis
     const user = req.user!
     const { oldPassword, newPassword } = (req.body ?? {}) as { oldPassword?: string; newPassword?: string }
     if (!oldPassword || !newPassword) return reply.code(400).send({ error: 'oldPassword and newPassword required' })
-    if (!verifyPassword(oldPassword, user.authHash)) return reply.code(401).send({ error: '当前密码不正确' })
+    if (!(await verifyPassword(oldPassword, user.authHash))) return reply.code(401).send({ error: '当前密码不正确' })
     if (newPassword.length < 6) return reply.code(400).send({ error: '新密码至少 6 位' })
-    await store.upsertUser({ id: user.id, role: user.role, authHash: hashPassword(newPassword) })
+    await store.upsertUser({ id: user.id, role: user.role, authHash: await hashPassword(newPassword) })
     await store.appendAudit({ ts: new Date().toISOString(), actor: user.id, action: 'change_password', result: 'ok' })
     return { ok: true }
   })
