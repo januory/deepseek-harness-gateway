@@ -857,12 +857,17 @@ h3 {
   background: #fff;
   border-bottom: 1px solid var(--border);
   flex: 0 0 auto;
-  transition: grid-template-rows 0.28s ease, border-color 0.28s ease;
+  overflow: hidden;
+  transition: grid-template-rows 0.28s ease, border-bottom-width 0.28s ease;
 }
 
+/* Collapse the border width too: a 1px transparent border still paints the
+   bar's white background under it, leaving a 1-2px white line at the top once
+   the bar closes flush. Zeroing it (with overflow hidden on the bar) removes
+   the residual. */
 .console__bar--collapsed {
   grid-template-rows: 0fr;
-  border-bottom-color: transparent;
+  border-bottom-width: 0;
 }
 
 .console__bar-row {

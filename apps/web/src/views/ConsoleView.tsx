@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { MachineView } from '../types'
 import { Button, StatusDot, shortId } from '../ui'
 
@@ -7,19 +7,25 @@ import { Button, StatusDot, shortId } from '../ui'
 // and uses a relative Vite base, so it frames correctly under this path.
 export function ConsoleView({ machine, onBack }: { machine: MachineView; onBack: () => void }) {
   const [collapsed, setCollapsed] = useState(false)
+  const pendingCollapse = useRef<number | undefined>(undefined)
 
-  // Open collapsed by default: render the status bar expanded for one frame,
-  // then collapse so its collapse animation plays on entry (the console takes
-  // the full frame; the floating expand pill restores the bar).
+  // Open collapsed by default: keep the status bar visible for a beat, then play
+  // the collapse animation so the console takes the full frame (the floating
+  // expand pill restores the bar).
   useEffect(() => {
-    let raf = 0
-    raf = requestAnimationFrame(() => {
-      raf = requestAnimationFrame(() => setCollapsed(true))
-    })
-    return () => cancelAnimationFrame(raf)
+    pendingCollapse.current = window.setTimeout(() => setCollapsed(true), 2000)
+    return () => window.clearTimeout(pendingCollapse.current)
   }, [])
 
-  const toggle = () => setCollapsed((c) => !c)
+  const toggle = () => {
+    // A manual toggle cancels the pending auto-collapse so it doesn't re-fire
+    // after the user explicitly expands the bar.
+    if (pendingCollapse.current) {
+      window.clearTimeout(pendingCollapse.current)
+      pendingCollapse.current = undefined
+    }
+    setCollapsed((c) => !c)
+  }
 
   return (
     <div className="console">
