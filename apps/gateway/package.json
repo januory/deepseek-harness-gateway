@@ -14,7 +14,8 @@
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
     "build": "tsc --noEmit && node scripts/bundle.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
