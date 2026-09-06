@@ -122,7 +122,7 @@ app.get('/health', async (_req, reply) =>
   reply.header('Cache-Control', 'no-store').send({
     ok: true,
     service: 'deepseek-harness-gateway',
-    version: '0.2.1',
+    version: '0.2.2',
     protocol: PROTOCOL_VERSION,
     connectedNodes: registry.connectedCount(),
   }),
