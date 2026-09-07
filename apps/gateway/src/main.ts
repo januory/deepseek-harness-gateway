@@ -147,7 +147,7 @@ if (!adminPasswordSet) {
   app.log.warn('using default bootstrap admin password ("admin") — set DSH_GATEWAY_ADMIN_PASSWORD in production')
 }
 
-const auth = buildAuth()
+const auth = buildAuth(store)
 const registry = new NodeRegistry(store)
 
 // Seed one-time pairing codes for testing: DSH_GATEWAY_PAIRING_CODES="code,code,..."

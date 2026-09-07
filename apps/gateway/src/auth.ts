@@ -13,7 +13,7 @@ import { promisify } from 'node:util'
 import fastifyCookie from '@fastify/cookie'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { IStore, User, Role } from 'dsh-gateway-store'
-import { LoginThrottle } from './login-throttle.js'
+import { LoginThrottle, type LoginThrottlePersistence } from './login-throttle.js'
 
 const scryptAsync = promisify(scrypt) as unknown as (
   password: string,
@@ -215,19 +215,44 @@ export interface Auth {
   requireRole(...roles: Role[]): (req: FastifyRequest, reply: FastifyReply) => Promise<void>
 }
 
-export function buildAuth(): Auth {
+export function buildAuth(store: IStore): Auth {
   const sessions = new SessionStore()
-  const throttle = new LoginThrottle({
-    ipMax: LOGIN_IP_MAX,
-    ipWindowMs: LOGIN_IP_WINDOW_MS,
-    accountMax: LOGIN_ACCOUNT_MAX,
-    accountWindowMs: LOGIN_ACCOUNT_WINDOW_MS,
-    backoffMs: LOGIN_BACKOFF_MS,
-  })
+  // Persistent lockout: hydrate on start and write every mutation through the
+  // store, so account lockouts and per-IP windows survive a gateway restart.
+  const persist: LoginThrottlePersistence | undefined = {
+    async hydrate() {
+      const [accounts, ips] = await Promise.all([store.listThrottleAccounts(), store.listThrottleIps()])
+      return {
+        accounts: accounts.map((a) => ({ account: a.account, fails: a.fails, lockUntil: a.lockUntil, lockCount: a.lockCount })),
+        ips: ips.map((r) => ({ ip: r.ip, attempts: r.attempts })),
+      }
+    },
+    async saveAccount(account, s) {
+      await store.saveThrottleAccount({ account, ...s, updatedAt: Date.now() })
+    },
+    async saveIp(ip, attempts) {
+      await store.saveThrottleIp({ ip, attempts, updatedAt: Date.now() })
+    },
+    deleteAccount: (account) => store.deleteThrottleAccount(account),
+    deleteIp: (ip) => store.deleteThrottleIp(ip),
+  }
+  const throttle = new LoginThrottle(
+    {
+      ipMax: LOGIN_IP_MAX,
+      ipWindowMs: LOGIN_IP_WINDOW_MS,
+      accountMax: LOGIN_ACCOUNT_MAX,
+      accountWindowMs: LOGIN_ACCOUNT_WINDOW_MS,
+      backoffMs: LOGIN_BACKOFF_MS,
+    },
+    Date.now,
+    persist,
+  )
 
   async function register(app: FastifyInstance, store: IStore, opts: RegisterOptions = {}): Promise<void> {
     await app.register(fastifyCookie)
+    await throttle.hydrate()
     sessions.startPrune()
+    throttle.startPrune()
 
     // Resolve the session → user on every request (cheap; SQLite-backed).
     app.addHook('preHandler', async (req) => {
@@ -245,7 +270,7 @@ export function buildAuth(): Auth {
       if (!id || !password) return reply.code(400).send({ error: 'id and password required' })
 
       const ip = req.ip
-      const allowed = throttle.check(ip, id)
+      const allowed = await throttle.check(ip, id)
       if (!allowed.ok) {
         return reply
           .code(429)
@@ -258,7 +283,7 @@ export function buildAuth(): Auth {
       // response time carries no account-existence signal.
       const ok = user ? await verifyPassword(password, user.authHash) : await verifyPassword(password, DUMMY_STORED)
       if (!user || !ok) {
-        throttle.recordFailure(ip, id)
+        await throttle.recordFailure(ip, id)
         await store.appendAudit({
           ts: new Date().toISOString(),
           actor: id,
@@ -269,7 +294,7 @@ export function buildAuth(): Auth {
         return reply.code(401).send({ error: 'invalid credentials' })
       }
 
-      throttle.recordSuccess(id)
+      await throttle.recordSuccess(id)
       const token = sessions.create(user.id)
       const secure = opts.cookieSecure ?? req.protocol === 'https'
       reply.setCookie(sessionCookieName(req.protocol, opts.cookieSecure), token, {
