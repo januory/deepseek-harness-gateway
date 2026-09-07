@@ -608,7 +608,10 @@ h3 {
 .table td {
   padding: 11px 16px;
   border-bottom: 1px solid var(--surface-3);
-  vertical-align: middle;
+  /* Top-align so the action buttons and the machine cell share the same top
+     edge. Baseline alignment would lift the taller buttons above the text line,
+     and middle alignment would center the short cells on the tallest one. */
+  vertical-align: top;
 }
 
 .table tr:last-child td {

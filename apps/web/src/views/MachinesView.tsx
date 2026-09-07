@@ -151,12 +151,17 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
                         </div>
                       </td>
                       <td>
-                        <div style={{ fontWeight: 600 }}>{m.name}</div>
-                        <div className="mono muted" title={m.id}>
+                        {/* Name + id on one line (same as the assignments table) so
+                            the row is a single height and the badge/version/heartbeat/
+                            actions line up on the same top line. */}
+                        <span style={{ fontWeight: 600 }}>{m.name}</span>{' '}
+                        <span className="mono muted" title={m.id}>
                           {shortId(m.id)}
-                        </div>
+                        </span>
                       </td>
-                      <td className="mono muted">{m.dshVersion || '—'}</td>
+                      {/* Same style as the heartbeat cell so both metadata columns
+                          share one baseline (the mono 12.5px glyph sits ~1px off). */}
+                      <td className="muted">{m.dshVersion || '—'}</td>
                       <td className="muted">{formatTime(m.lastHeartbeatAt)}</td>
                       <td className="cell-actions">{renderActions(m)}</td>
                     </tr>
