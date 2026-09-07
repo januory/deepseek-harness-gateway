@@ -98,7 +98,7 @@ export function AssignmentsView({ me }: { me: PublicUser }) {
               )}
             </select>
           </Field>
-          <Button variant="primary" disabled={busy} onClick={() => void assign()}>
+          <Button className="assign-form__submit" variant="primary" disabled={busy} onClick={() => void assign()}>
             分配
           </Button>
         </div>
@@ -111,35 +111,71 @@ export function AssignmentsView({ me }: { me: PublicUser }) {
         ) : assignments.length === 0 ? (
           <Empty>暂无分配</Empty>
         ) : (
-          <div className="card__body card__body--flush">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>机器</th>
-                  <th>用户</th>
-                  <th>分配时间</th>
-                  <th style={{ textAlign: 'right' }}>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {assignments.map((a) => (
-                  <tr key={`${a.machineId}:${a.userId}`}>
-                    <td>
-                      <span style={{ fontWeight: 600 }}>{machineName(a.machineId)}</span>{' '}
-                      <span className="mono muted">{shortId(a.machineId)}</span>
-                    </td>
-                    <td style={{ fontWeight: 600 }}>{a.userId}</td>
-                    <td className="muted">{formatTime(a.createdAt)}</td>
-                    <td className="cell-actions">
-                      <Button variant="danger" onClick={() => void unassign(a.machineId, a.userId)}>
-                        取消分配
-                      </Button>
-                    </td>
+          <>
+            {/* Desktop: table */}
+            <div className="assignments-table card__body card__body--flush">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>机器</th>
+                    <th>用户</th>
+                    <th>分配时间</th>
+                    <th style={{ textAlign: 'right' }}>操作</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {assignments.map((a) => (
+                    <tr key={`${a.machineId}:${a.userId}`}>
+                      <td>
+                        <span style={{ fontWeight: 600 }}>{machineName(a.machineId)}</span>{' '}
+                        <span className="mono muted">{shortId(a.machineId)}</span>
+                      </td>
+                      <td style={{ fontWeight: 600 }}>{a.userId}</td>
+                      <td className="muted">{formatTime(a.createdAt)}</td>
+                      <td className="cell-actions">
+                        <Button variant="danger" onClick={() => void unassign(a.machineId, a.userId)}>
+                          取消分配
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile: one stacked card per assignment (mirrors machines/audit cards) */}
+            <div className="assignments-cards">
+              {assignments.map((a) => (
+                <div className="assignment-card" key={`${a.machineId}:${a.userId}`}>
+                  <div className="assignment-card__head">
+                    <div className="assignment-card__title">
+                      <strong title={machineName(a.machineId)}>{machineName(a.machineId)}</strong>
+                      <span className="mono muted" title={a.machineId}>
+                        {shortId(a.machineId)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="assignment-card__meta">
+                    <div className="assignment-card__row">
+                      <span className="assignment-card__label">用户</span>
+                      <span className="assignment-card__value" style={{ fontWeight: 600 }}>
+                        {a.userId}
+                      </span>
+                    </div>
+                    <div className="assignment-card__row">
+                      <span className="assignment-card__label">分配时间</span>
+                      <span className="muted assignment-card__value">{formatTime(a.createdAt)}</span>
+                    </div>
+                  </div>
+                  <div className="assignment-card__actions">
+                    <Button variant="danger" onClick={() => void unassign(a.machineId, a.userId)}>
+                      取消分配
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </Card>
     </>

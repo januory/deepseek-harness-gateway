@@ -1157,6 +1157,11 @@ h3 {
   display: none;
 }
 
+/* assignment cards are the mobile alternative to the assignments table (≤1024px) */
+.assignments-cards {
+  display: none;
+}
+
 /* ---- responsive / mobile ------------------------------------------------------- */
 
 @media (max-width: 1024px) {
@@ -1430,6 +1435,88 @@ h3 {
     min-width: 0;
     overflow-wrap: anywhere;
   }
+
+  /* assignments: switch from the table to stacked cards */
+  .assignments-table {
+    display: none;
+  }
+
+  .assignments-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .assignment-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+  }
+
+  .assignment-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .assignment-card__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .assignment-card__title strong {
+    font-size: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .assignment-card__meta {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .assignment-card__row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .assignment-card__label {
+    flex: none;
+    width: 60px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .assignment-card__value {
+    font-size: 14px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .assignment-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .assignment-card__actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
 }
 
 /* Phones: stack search and status filter full-width for large tap targets. */
@@ -1458,6 +1545,19 @@ h3 {
 
   .audit-card {
     padding: 13px 14px;
+  }
+
+  /* assignments: full-width assign submit + roomy cancel-assign tap targets */
+  .assign-form__submit {
+    width: 100%;
+    justify-content: center;
+    min-height: 42px;
+    padding: 8px 12px;
+  }
+
+  .assignment-card__actions .btn {
+    min-height: 42px;
+    padding: 8px 12px;
   }
 }
 
