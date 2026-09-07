@@ -7,7 +7,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { IStore } from 'dsh-gateway-store'
 import type { NodeRegistry } from './nodes.js'
 import { authorizeConsole } from './authz.js'
-import { SESSION_COOKIE, type Auth } from './auth.js'
+import { readSessionToken, type Auth } from './auth.js'
 import { CONSOLE_ADAPT_ENABLED, injectMobileAdapt, injectTransportOwnership } from './console-adapt.js'
 
 const FORWARD_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'] as const
@@ -197,7 +197,7 @@ export function registerRouter(app: FastifyInstance, registry: NodeRegistry, sto
 
     /** The console machine this session is bound to, or undefined. */
     const sessionMachine = (req: FastifyRequest): string | undefined => {
-      const token = req.cookies?.[SESSION_COOKIE]
+      const token = readSessionToken(req.cookies)
       return token ? auth.sessions.machineOf(token) : undefined
     }
 
@@ -209,7 +209,7 @@ export function registerRouter(app: FastifyInstance, registry: NodeRegistry, sto
       // relayed page then issues its /api, /plugins, /assets and WebSocket
       // requests as machine-less absolute paths; those are routed to this
       // machine by the /* passthrough below (and the WS upgrade in main.ts).
-      const token = req.cookies?.[SESSION_COOKIE]
+      const token = readSessionToken(req.cookies)
       if (token) auth.sessions.bindMachine(token, machineId)
     }
 

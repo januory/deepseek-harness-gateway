@@ -21,7 +21,23 @@ const scryptAsync = promisify(scrypt) as unknown as (
   keylen: number,
 ) => Promise<Buffer>
 
+// Session cookie names. A `__Host-` prefix is enforced by browsers to require
+// Secure + Path=/ + no Domain (anti-shadowing / anti-downgrade, hardening
+// backlog); it is only legal on Secure cookies, so TLS/forced-Secure
+// deployments get the prefixed name while plain-http loopback dev keeps the
+// legacy plain name. Reads accept both so a mode switch never drops sessions.
 export const SESSION_COOKIE = 'gw_session'
+export const SESSION_COOKIE_HOST = '__Host-gw_session'
+
+/** The session cookie name for a request: `__Host-` prefix only under Secure. */
+export function sessionCookieName(protocol: string, cookieSecure?: boolean): string {
+  return cookieSecure ?? protocol === 'https' ? SESSION_COOKIE_HOST : SESSION_COOKIE
+}
+
+/** Session token from a parsed cookie map, under either cookie name. */
+export function readSessionToken(cookies: Record<string, string | undefined> | undefined): string | undefined {
+  return cookies?.[SESSION_COOKIE_HOST] ?? cookies?.[SESSION_COOKIE]
+}
 
 const MIN = 60 * 1000
 
@@ -215,7 +231,7 @@ export function buildAuth(): Auth {
 
     // Resolve the session → user on every request (cheap; SQLite-backed).
     app.addHook('preHandler', async (req) => {
-      const token = req.cookies?.[SESSION_COOKIE]
+      const token = readSessionToken(req.cookies)
       if (!token) return
       const s = sessions.get(token)
       if (!s) return
@@ -256,15 +272,23 @@ export function buildAuth(): Auth {
       throttle.recordSuccess(id)
       const token = sessions.create(user.id)
       const secure = opts.cookieSecure ?? req.protocol === 'https'
-      reply.setCookie(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'strict', path: '/', secure })
+      reply.setCookie(sessionCookieName(req.protocol, opts.cookieSecure), token, {
+        httpOnly: true,
+        sameSite: 'strict',
+        path: '/',
+        secure,
+      })
       await store.appendAudit({ ts: new Date().toISOString(), actor: user.id, action: 'login', result: 'ok' })
       return { ok: true, user: publicUser(user) }
     })
 
     app.post('/gw/logout', async (req, reply) => {
-      const token = req.cookies?.[SESSION_COOKIE]
+      const token = readSessionToken(req.cookies)
       if (token) sessions.destroy(token)
+      // Clear both names: the __Host- variant needs Secure even on deletion
+      // (browsers enforce the prefix rule on any Set-Cookie with that name).
       reply.clearCookie(SESSION_COOKIE, { path: '/' })
+      reply.clearCookie(SESSION_COOKIE_HOST, { path: '/', secure: true })
       return { ok: true }
     })
 

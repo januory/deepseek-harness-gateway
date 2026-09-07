@@ -7,7 +7,7 @@ import { WebSocketServer } from 'ws'
 import { SqliteStore } from 'dsh-gateway-store'
 import { NodeRegistry } from './nodes.js'
 import { registerRouter } from './router.js'
-import { buildAuth, bootstrap, SESSION_COOKIE } from './auth.js'
+import { buildAuth, bootstrap, SESSION_COOKIE, SESSION_COOKIE_HOST } from './auth.js'
 import { isAdmin, registerControl } from './control.js'
 import { registerUpdater } from './updater.js'
 import { authorizeConsole, getCookie } from './authz.js'
@@ -313,8 +313,10 @@ async function handleBrowserUpgrade(req: any, socket: any, head: Buffer): Promis
   } else {
     // Machine-less console paths (the page issues /api/remote.mux etc. as
     // absolute URLs with no machineId): route to the session's bound machine
-    // first, then the single-node passthrough.
-    const bound = getCookie(req.headers.cookie, SESSION_COOKIE)
+    // first, then the single-node passthrough. Raw header parse accepts either
+    // cookie name (__Host- on TLS, plain on http dev).
+    const bound =
+      getCookie(req.headers.cookie, SESSION_COOKIE_HOST) ?? getCookie(req.headers.cookie, SESSION_COOKIE)
     machineId = (bound ? auth.sessions.machineOf(bound) : undefined) ?? registry.singleNodeId()
     upstreamPath = u.pathname + u.search
   }
@@ -323,7 +325,8 @@ async function handleBrowserUpgrade(req: any, socket: any, head: Buffer): Promis
     return socket.destroy()
   }
 
-  const token = getCookie(req.headers.cookie, SESSION_COOKIE)
+  const token =
+    getCookie(req.headers.cookie, SESSION_COOKIE_HOST) ?? getCookie(req.headers.cookie, SESSION_COOKIE)
   const session = token ? auth.sessions.get(token) : undefined
   const user = session ? await store.getUser(session.userId) : undefined
   const res = await authorizeConsole(store, user, machineId)
