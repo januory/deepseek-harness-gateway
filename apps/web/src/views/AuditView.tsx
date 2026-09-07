@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type AuditFilters } from '../api'
 import type { AuditEvent, PublicUser } from '../types'
+import { AUDIT_ACTIONS } from '../types'
 import { Button, Card, Empty, PageHeader, ResultBadge, Spinner, formatTime, shortId } from '../ui'
 
 export function AuditView({ me }: { me: PublicUser }) {
@@ -85,7 +86,14 @@ export function AuditView({ me }: { me: PublicUser }) {
           </div>
           <div className="field">
             <span className="field__label">动作</span>
-            <input className="input" placeholder="如 login / approve" value={action} onChange={(e) => setAction(e.target.value)} />
+            <select className="select" value={action} onChange={(e) => setAction(e.target.value)}>
+              <option value="">全部</option>
+              {AUDIT_ACTIONS.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="field">
             <span className="field__label">结果</span>

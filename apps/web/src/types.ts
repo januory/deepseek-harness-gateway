@@ -48,6 +48,23 @@ export interface AuditEvent {
   detail?: string
 }
 
+// ==== audit action names (closed set emitted by the gateway control plane) =========
+// Every value here matches an `action:` literal in apps/gateway/src audit writes.
+// Keep in sync when a new appendAudit/action is added on the gateway side.
+export const AUDIT_ACTIONS = [
+  'approve_machine',
+  'bootstrap_admin',
+  'change_password',
+  'delete_machine',
+  'login',
+  'login_throttled',
+  'register_pending',
+  'rename_machine',
+  'revoke_machine',
+  'version_update',
+] as const
+export type AuditAction = (typeof AUDIT_ACTIONS)[number]
+
 // ---- version / hot-update ----------------------------------------------------
 
 export interface CommitInfo {
