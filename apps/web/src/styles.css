@@ -16,6 +16,29 @@
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
+  /* Portal surface / semantic tokens (theme-aware; dark overrides below). */
+  --surface-raised: #f3f4f6;   /* hover fills, gray chips */
+  --surface-2: #fafbfc;        /* table header / row hover */
+  --surface-3: #f1f2f4;        /* table row separator */
+  --ok-text: #15803d;
+  --warn-text: #b45309;
+  --danger-text: #b91c1c;
+  --blue-text: #1d4ed8;
+  --purple-bg: #f3e8ff;
+  --purple-text: #7e22ce;
+  --gray-text: #4b5563;
+  --dot-off: #d1d5db;
+  --login-card-bg: rgba(255, 255, 255, 0.96);
+  --login-card-border: rgba(226, 232, 240, 0.9);
+  --login-input-bg: #f9fafc;
+  --login-input-border: #e3e8f2;
+  --login-input-focus-bg: #fff;
+  --login-input-placeholder: #98a2b8;
+  --login-input-autofill: #f9fafc;
+  --login-github: #5a6b85;
+  --login-foot: #a3adc2;
+  --modal-overlay: rgba(17, 24, 39, 0.45);
+
   /* DSH (DeepSeek Harness) light-theme design tokens — mirror the dsh web
      palette so the portal chrome reads as the same product as the console it
      embeds. Values map to ui-theme's design-platform tokens:
@@ -50,6 +73,44 @@
    chrome that sits beside the embedded console flips. */
 @media (prefers-color-scheme: dark) {
   :root {
+    /* base portal surfaces (data pages) */
+    --bg: #151517;                      /* bluish-950  (page) */
+    --surface: #232324;                 /* bluish-875  (cards/sheets) */
+    --surface-raised: #2c2c2e;          /* bluish-850  (hover/chips) */
+    --surface-2: #1b1b1c;               /* bluish-900  (table header) */
+    --surface-3: rgba(255, 255, 255, 0.06);
+    --border: rgba(255, 255, 255, 0.12);
+    --text: #f9fafb;                    /* bluish-50   (label-primary) */
+    --muted: #adb2b8;                   /* bluish-400  (label-tertiary) */
+    --primary: #5686fe;                 /* deepseek-450 */
+    --primary-weak: rgba(86, 134, 254, 0.16);
+    --danger: #f25a5a;                  /* red-400 */
+    --danger-weak: rgba(239, 68, 68, 0.16);
+    --danger-text: #f87171;
+    --ok: #22c55e;                      /* green-500 */
+    --ok-weak: rgba(34, 197, 94, 0.16);
+    --ok-text: #4ade80;
+    --warn: #f59e0b;                    /* amber-500 */
+    --warn-weak: rgba(245, 158, 11, 0.16);
+    --warn-text: #fbbf24;
+    --blue-text: #93c5fd;
+    --purple-bg: rgba(168, 85, 247, 0.16);
+    --purple-text: #d8b4fe;
+    --gray-text: #cfd3d6;
+    --dot-off: #6b7280;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --login-card-bg: rgba(35, 35, 37, 0.96);
+    --login-card-border: rgba(255, 255, 255, 0.1);
+    --login-input-bg: #1b1b1c;
+    --login-input-border: rgba(255, 255, 255, 0.12);
+    --login-input-focus-bg: #232324;
+    --login-input-placeholder: #6b7280;
+    --login-input-autofill: #1b1b1c;
+    --login-github: #98a2b8;
+    --login-foot: #6b7280;
+    --modal-overlay: rgba(0, 0, 0, 0.6);
+
+    /* dsh chrome (left rail + in-portal console) */
     --dsh-bg: #1b1b1c;                  /* bluish-900  (sidebar fill) */
     --dsh-bg-raised: #2c2c2e;           /* bluish-850  (nav hover) */
     --dsh-bg-active: #43454a;           /* bluish-750  (nav active) */
@@ -359,7 +420,7 @@ h3 {
   border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 14px;
-  background: #fff;
+  background: var(--surface);
   color: var(--text);
   font-family: inherit;
 }
@@ -417,7 +478,7 @@ h3 {
   padding: 7px 14px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
   color: var(--text);
   font-size: 13.5px;
   cursor: pointer;
@@ -427,7 +488,7 @@ h3 {
 }
 
 .btn:hover {
-  background: #f3f4f6;
+  background: var(--surface-raised);
 }
 
 .btn:disabled {
@@ -447,7 +508,7 @@ h3 {
 }
 
 .btn--danger {
-  background: #fff;
+  background: var(--surface);
   border-color: var(--danger);
   color: var(--danger);
 }
@@ -463,7 +524,7 @@ h3 {
 }
 
 .btn--ghost:hover {
-  background: #f3f4f6;
+  background: var(--surface-raised);
   color: var(--text);
 }
 
@@ -486,27 +547,27 @@ h3 {
 
 .badge--green {
   background: var(--ok-weak);
-  color: #15803d;
+  color: var(--ok-text);
 }
 .badge--amber {
   background: var(--warn-weak);
-  color: #b45309;
+  color: var(--warn-text);
 }
 .badge--red {
   background: var(--danger-weak);
-  color: #b91c1c;
+  color: var(--danger-text);
 }
 .badge--blue {
   background: var(--primary-weak);
-  color: #1d4ed8;
+  color: var(--blue-text);
 }
 .badge--purple {
-  background: #f3e8ff;
-  color: #7e22ce;
+  background: var(--purple-bg);
+  color: var(--purple-text);
 }
 .badge--gray {
-  background: #f3f4f6;
-  color: #4b5563;
+  background: var(--surface-raised);
+  color: var(--gray-text);
 }
 
 .dot {
@@ -521,7 +582,7 @@ h3 {
   box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
 }
 .dot--off {
-  background: #d1d5db;
+  background: var(--dot-off);
 }
 
 /* ---- table --------------------------------------------------------------------------- */
@@ -541,12 +602,12 @@ h3 {
   font-weight: 600;
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);
-  background: #fafbfc;
+  background: var(--surface-2);
 }
 
 .table td {
   padding: 11px 16px;
-  border-bottom: 1px solid #f1f2f4;
+  border-bottom: 1px solid var(--surface-3);
   vertical-align: middle;
 }
 
@@ -555,7 +616,7 @@ h3 {
 }
 
 .table tr:hover td {
-  background: #fafbfc;
+  background: var(--surface-2);
 }
 
 .table .cell-actions {
@@ -577,7 +638,7 @@ h3 {
   width: 20px;
   height: 20px;
   margin: 32px auto;
-  border: 2.5px solid #e2e5ea;
+  border: 2.5px solid var(--border);
   border-top-color: var(--primary);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
@@ -607,8 +668,8 @@ h3 {
 .login-card {
   width: 400px;
   max-width: 100%;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(226, 232, 240, 0.9);
+  background: var(--login-card-bg);
+  border: 1px solid var(--login-card-border);
   border-radius: 20px;
   box-shadow:
     0 1px 2px rgba(16, 24, 40, 0.04),
@@ -668,24 +729,24 @@ h3 {
   padding: 0 20px;
   border-radius: 999px;
   font-size: 14px;
-  border: 1px solid #e3e8f2;
-  background: #f9fafc;
+  border: 1px solid var(--login-input-border);
+  background: var(--login-input-bg);
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 .login-input.input:focus {
   outline: none;
   border-color: #4d6bfe;
-  background: #fff;
+  background: var(--login-input-focus-bg);
   box-shadow: 0 0 0 4px rgba(77, 107, 254, 0.14);
 }
 
 .login-input.input::placeholder {
-  color: #98a2b8;
+  color: var(--login-input-placeholder);
 }
 
 .login-input.input:-webkit-autofill {
-  -webkit-box-shadow: 0 0 0 1000px #f9fafc inset;
+  -webkit-box-shadow: 0 0 0 1000px var(--login-input-autofill) inset;
   -webkit-text-fill-color: var(--text);
   caret-color: #4d6bfe;
   transition: background-color 9999s ease-out;
@@ -693,7 +754,7 @@ h3 {
 
 .login-error {
   background: var(--danger-weak);
-  color: #b91c1c;
+  color: var(--danger-text);
   border-radius: 12px;
   padding: 8px 14px;
   font-size: 13px;
@@ -785,7 +846,7 @@ h3 {
   padding: 6px 10px;
   align-self: center;
   border-radius: 999px;
-  color: #5a6b85;
+  color: var(--login-github);
   font-size: 13px;
   text-decoration: none;
   transition: color 0.15s ease, background 0.15s ease;
@@ -798,7 +859,7 @@ h3 {
 
 .login-foot {
   margin-top: 14px;
-  color: #a3adc2;
+  color: var(--login-foot);
   font-size: 12px;
   text-align: center;
 }
@@ -808,7 +869,7 @@ h3 {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(17, 24, 39, 0.45);
+  background: var(--modal-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -817,7 +878,7 @@ h3 {
 }
 
 .modal {
-  background: #fff;
+  background: var(--surface);
   border-radius: 12px;
   box-shadow: 0 20px 60px rgba(16, 24, 40, 0.25);
   width: 100%;
@@ -1269,7 +1330,7 @@ h3 {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 14px;
-    background: #fff;
+    background: var(--surface);
     box-shadow: var(--shadow);
   }
 
@@ -1326,7 +1387,7 @@ h3 {
   }
 
   .audit-card {
-    background: #fff;
+    background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     box-shadow: var(--shadow);
@@ -1394,5 +1455,22 @@ h3 {
 
   .audit-card {
     padding: 13px 14px;
+  }
+}
+
+/* Dark-mode layout overrides that must tail the base rules (equal specificity,
+   the later rule wins). The token re-mapping lives in the top @media block. */
+@media (prefers-color-scheme: dark) {
+  .login-wrap {
+    background:
+      radial-gradient(52% 40% at 50% -8%, rgba(86, 134, 254, 0.2), transparent 70%),
+      radial-gradient(40% 32% at 88% 104%, rgba(103, 158, 254, 0.12), transparent 70%),
+      linear-gradient(180deg, #1b1b1c 0%, #151517 100%);
+  }
+
+  .login-card {
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.4),
+      0 20px 50px -12px rgba(0, 0, 0, 0.6);
   }
 }
