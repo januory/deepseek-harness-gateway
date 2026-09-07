@@ -15,6 +15,30 @@
   --radius: 10px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* DSH (DeepSeek Harness) light-theme design tokens — mirror the dsh web
+     palette so the portal chrome reads as the same product as the console it
+     embeds. Values map to ui-theme's design-platform tokens:
+       --dsh-bg            neutral-bluish-50  (sidebar fill)
+       --dsh-bg-raised     neutral-bluish-75  (nav hover)
+       --dsh-bg-active     neutral-bluish-100 (nav active)
+       --dsh-ink           neutral-bluish-1000 (label-primary)
+       --dsh-ink-secondary neutral-bluish-700 (label-secondary)
+       --dsh-ink-tertiary  neutral-bluish-600 (label-tertiary)
+       --dsh-border        alias-border-l3
+       --dsh-accent        deepseek-500 (brand)
+       --dsh-accent-weak   deepseek-100 (active accent) */
+  --dsh-bg: #f9fafb;
+  --dsh-bg-raised: #f1f3f5;
+  --dsh-bg-active: #ebeef2;
+  --dsh-ink: #0f1115;
+  --dsh-ink-secondary: #61666b;
+  --dsh-ink-tertiary: #81858c;
+  --dsh-border: rgba(15, 17, 21, 0.1);
+  --dsh-interactive-hover: rgba(38, 49, 72, 0.06);
+  --dsh-accent: #4176e6;
+  --dsh-accent-weak: #e4edfd;
+  --dsh-radius: 8px;
 }
 
 * {
@@ -80,25 +104,27 @@ h3 {
 .sidebar {
   width: 220px;
   flex: 0 0 220px;
-  background: #111827;
-  color: #d1d5db;
+  background: var(--dsh-bg);
+  color: var(--dsh-ink);
+  border-right: 1px solid var(--dsh-border);
   display: flex;
   flex-direction: column;
-  padding: 16px 12px;
+  padding: 8px 12px;
+  box-sizing: border-box;
 }
 
 .sidebar__brand {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
-  color: #fff;
-  padding: 6px 10px 18px;
+  color: var(--dsh-ink);
+  padding: 6px 8px 16px;
   letter-spacing: 0.2px;
 }
 
 .sidebar__brand small {
   display: block;
   font-weight: 400;
-  color: #9ca3af;
+  color: var(--dsh-ink-secondary);
   font-size: 11px;
   margin-top: 2px;
 }
@@ -110,12 +136,12 @@ h3 {
   margin-top: 8px;
   font-weight: 500;
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--dsh-ink-secondary);
   text-decoration: none;
 }
 
 .sidebar__github:hover {
-  color: #fff;
+  color: var(--dsh-ink);
 }
 
 .sidebar nav {
@@ -131,26 +157,42 @@ h3 {
   text-align: left;
   background: transparent;
   border: none;
-  color: #d1d5db;
+  color: var(--dsh-ink);
   padding: 9px 12px;
-  border-radius: 8px;
+  border-radius: var(--dsh-radius);
   cursor: pointer;
   font-size: 14px;
   transition: background 0.12s ease, color 0.12s ease;
+  position: relative;
 }
 
 .nav-item:hover {
-  background: #1f2937;
-  color: #fff;
+  background: var(--dsh-bg-raised);
+  color: var(--dsh-ink);
 }
 
 .nav-item--active {
-  background: var(--primary);
-  color: #fff;
+  background: var(--dsh-bg-active);
+  color: var(--dsh-ink);
+  font-weight: 600;
+}
+
+/* Active item gets a slim deepseek-blue accent bar (DSH-flavoured selection
+   marker) inset inside the rounded row, clear of the label. */
+.nav-item--active::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--dsh-accent);
 }
 
 .sidebar__user {
-  border-top: 1px solid #263044;
+  border-top: 1px solid var(--dsh-border);
   padding-top: 14px;
   margin-top: 12px;
 }
@@ -171,7 +213,7 @@ h3 {
 }
 
 .who__name {
-  color: #fff;
+  color: var(--dsh-ink);
   font-size: 13.5px;
   font-weight: 700;
   white-space: nowrap;
@@ -185,10 +227,10 @@ h3 {
   gap: 5px;
   flex-shrink: 0;
   padding: 6px 10px;
-  border-radius: 8px;
+  border-radius: var(--dsh-radius);
   border: 1px solid transparent;
   background: transparent;
-  color: #9ca3af;
+  color: var(--dsh-ink-secondary);
   font-size: 12.5px;
   font-family: inherit;
   cursor: pointer;
@@ -197,8 +239,8 @@ h3 {
 }
 
 .who__logout:hover {
-  background: #1f2937;
-  color: #fff;
+  background: var(--dsh-bg-raised);
+  color: var(--dsh-ink);
 }
 
 .main {
@@ -1060,7 +1102,7 @@ h3 {
     transform: translateX(-100%);
     transition: transform 0.2s ease;
     z-index: 60;
-    box-shadow: 0 0 40px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 0 40px rgba(15, 17, 21, 0.18);
   }
 
   .sidebar--open {
@@ -1074,7 +1116,7 @@ h3 {
     right: 12px;
     background: transparent;
     border: none;
-    color: #9ca3af;
+    color: var(--dsh-ink-tertiary);
     font-size: 16px;
     line-height: 1;
     padding: 4px;
@@ -1082,13 +1124,13 @@ h3 {
   }
 
   .sidebar__close:hover {
-    color: #fff;
+    color: var(--dsh-ink);
   }
 
   .sidebar-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(17, 24, 39, 0.45);
+    background: rgba(15, 17, 21, 0.32);
     z-index: 55;
   }
 
@@ -1103,9 +1145,10 @@ h3 {
     z-index: 50;
     width: 38px;
     height: 38px;
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: 9px;
+    background: var(--surface);
+    border: 1px solid var(--dsh-border);
+    border-radius: var(--dsh-radius);
+    color: var(--dsh-ink);
     font-size: 18px;
     cursor: pointer;
     box-shadow: var(--shadow);
