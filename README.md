@@ -100,6 +100,8 @@ environment variable, or a built-in default (CLI flag > env var > default):
 | `DSH_GATEWAY_SESSION_IDLE_TTL_MS` | *(env only)* | `28800000` (8 h) |
 | `DSH_GATEWAY_SESSION_ABSOLUTE_TTL_MS` | *(env only)* | `86400000` (24 h) |
 | `DSH_GATEWAY_SESSION_MAX` | *(env only)* | `10000` |
+| `DSH_GATEWAY_AUDIT_RETENTION_DAYS` | *(env only)* | `30` |
+| `DSH_GATEWAY_AUDIT_PURGE_INTERVAL_MS` | *(env only)* | `3600000` (1 h) |
 
 ```sh
 dshgw --host 0.0.0.0 --port 8080 --db ./gw.db --admin-id admin --admin-password secret --pairing-codes 'code1,code2'
@@ -112,6 +114,7 @@ Docker-only env vars (no CLI flag): `DSH_GATEWAY_BUILD_CMD` (default `pnpm -r bu
 - Terminate TLS at a reverse proxy and set `DSH_GATEWAY_TRUST_PROXY=1` so per-IP login throttling sees the real client; the session cookie gets `Secure` automatically over `https`.
 - Set a strong `DSH_GATEWAY_ADMIN_PASSWORD`. On a non-loopback bind or `NODE_ENV=production`, the gateway **refuses to start** with the default password unless `DSH_GATEWAY_ALLOW_DEFAULT_ADMIN=1` is set explicitly.
 - `/nodes` requires a logged-in session (admins see all machines, regular users only their assigned ones); `/health` returns only `{ "ok": true }`.
+- Audit retention (ADR-0012): `audit_events` are auto-purged past `DSH_GATEWAY_AUDIT_RETENTION_DAYS` (default 30) by a batched periodic task (`DSH_GATEWAY_AUDIT_PURGE_INTERVAL_MS`) plus a lazy write-path backstop; set retention to `0` to disable auto-cleanup. Export the log before that window closes: admins can call `GET /gw/audit/export` (`?format=csv`, plus the same `since/until/machineId/actor/action/result` filters as `GET /gw/audit`).
 
 Install the agent plugin into a customer machine's dsh (web profile):
 

@@ -6,13 +6,83 @@
 // seat acquire/release endpoints.
 
 import type { FastifyInstance } from 'fastify'
-import type { IStore, Role, User, Machine } from 'dsh-gateway-store'
+import { Readable } from 'node:stream'
+import type { AuditEvent, AuditQueryOptions, IStore, Role, User, Machine } from 'dsh-gateway-store'
 import type { NodeRegistry } from './nodes.js'
 import type { Auth } from './auth.js'
 import { hashPassword, verifyPassword } from './auth.js'
 
 /** Roles that can manage machines/users/assignments/audit. */
 const ADMIN_ROLES: Role[] = ['admin', 'system-admin']
+
+/** Cap for a single GET /gw/audit page. Exports page internally at this size. */
+const AUDIT_PAGE_MAX = 1000
+
+// ---- audit query helpers (ADR-0012: composable filters + pagination) -------
+
+function queryStr(v: unknown): string | undefined {
+  return typeof v === 'string' && v.length > 0 ? v : undefined
+}
+
+/** Parse GET /gw/audit + /gw/audit/export query params into store options. */
+function parseAuditQuery(q: Record<string, unknown>): AuditQueryOptions {
+  const opts: AuditQueryOptions = {
+    since: queryStr(q.since),
+    until: queryStr(q.until),
+    machineId: queryStr(q.machineId),
+    actor: queryStr(q.actor),
+    action: queryStr(q.action),
+    result: queryStr(q.result),
+  }
+  const limit = Number(q.limit)
+  const offset = Number(q.offset)
+  if (Number.isInteger(limit) && limit > 0) opts.limit = Math.min(limit, AUDIT_PAGE_MAX)
+  if (Number.isInteger(offset) && offset >= 0) opts.offset = offset
+  return opts
+}
+
+/** One JSONL line: `{ts,actor,machineId,action,result,detail}` (undefined omitted). */
+function auditLineJsonl(e: AuditEvent): string {
+  return JSON.stringify({
+    ts: e.ts,
+    actor: e.actor,
+    machineId: e.machineId,
+    action: e.action,
+    result: e.result,
+    detail: e.detail,
+  }) + '\n'
+}
+
+function csvField(v: string | undefined): string {
+  if (v === undefined) return ''
+  return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v
+}
+
+function auditLineCsv(e: AuditEvent): string {
+  return [e.ts, e.actor, e.machineId ?? '', e.action, e.result, e.detail ?? ''].map(csvField).join(',') + '\n'
+}
+
+/**
+ * Streaming export generator (ADR-0012 §C): pages through the store in
+ * chronological order and yields one line per event, so an arbitrarily large
+ * match never has to be materialized in memory. The Readable's backpressure
+ * paces the store reads (one page query per pulled chunk).
+ */
+async function* streamAuditLines(
+  store: IStore,
+  opts: AuditQueryOptions,
+  format: 'jsonl' | 'csv',
+): AsyncGenerator<string> {
+  if (format === 'csv') yield 'ts,actor,machineId,action,result,detail\n'
+  let offset = 0
+  for (;;) {
+    const page = await store.queryAudit({ ...opts, limit: AUDIT_PAGE_MAX, offset })
+    if (page.length === 0) return
+    for (const e of page) yield format === 'csv' ? auditLineCsv(e) : auditLineJsonl(e)
+    if (page.length < AUDIT_PAGE_MAX) return
+    offset += page.length
+  }
+}
 
 export function isAdmin(user: User): boolean {
   return user.role === 'system-admin' || user.role === 'admin'
@@ -174,8 +244,24 @@ export async function registerControl(app: FastifyInstance, store: IStore, regis
   })
 
   // ---- audit --------------------------------------------------------------------
+  // Composable filters (since/until/machineId/actor/action/result) + optional
+  // limit/offset pagination, chronological order (ADR-0012 §D).
   app.get('/gw/audit', { preHandler: requireRole(...ADMIN_ROLES) }, async (req) => {
-    const q = req.query as any
-    return { events: await store.queryAudit({ machineId: q?.machineId, since: q?.since }) }
+    return { events: await store.queryAudit(parseAuditQuery((req.query ?? {}) as Record<string, unknown>)) }
+  })
+
+  // Manual admin export (ADR-0012 §C): streams every matching event as JSONL
+  // (default) or CSV, reusing the query filters (no pagination — a full dump).
+  app.get('/gw/audit/export', { preHandler: requireRole(...ADMIN_ROLES) }, async (req, reply) => {
+    const q = (req.query ?? {}) as Record<string, unknown>
+    const opts = parseAuditQuery(q)
+    delete opts.limit
+    delete opts.offset
+    const format: 'jsonl' | 'csv' = q.format === 'csv' ? 'csv' : 'jsonl'
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    reply.header('Cache-Control', 'no-store, private')
+    reply.header('Content-Disposition', `attachment; filename="audit-export-${stamp}.${format}"`)
+    reply.type(format === 'csv' ? 'text/csv; charset=utf-8' : 'application/x-ndjson; charset=utf-8')
+    return reply.send(Readable.from(streamAuditLines(store, opts, format)))
   })
 }

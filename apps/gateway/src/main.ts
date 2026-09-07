@@ -11,6 +11,7 @@ import { buildAuth, bootstrap, SESSION_COOKIE, SESSION_COOKIE_HOST } from './aut
 import { isAdmin, registerControl } from './control.js'
 import { registerUpdater } from './updater.js'
 import { authorizeConsole, getCookie } from './authz.js'
+import { createAuditRetention } from './audit-retention.js'
 
 // ---------------------------------------------------------------------------
 // Runtime config: CLI flag > environment variable > default.
@@ -109,6 +110,18 @@ function parseBoolEnv(raw: string | undefined): boolean | undefined {
 }
 const COOKIE_SECURE = parseBoolEnv(CLI.DSH_GATEWAY_COOKIE_SECURE ?? process.env.DSH_GATEWAY_COOKIE_SECURE)
 
+// Audit retention (ADR-0012): default 30-day window with an hourly batched
+// purge; 0 retention days disables auto-cleanup. Env-only tunables (like the
+// session/login-throttle tunables in auth.ts) — no CLI flags.
+function retentionEnv(name: string, def: number, allowZero: boolean): number {
+  const n = Number(process.env[name])
+  if (!Number.isInteger(n)) return def
+  if (allowZero ? n < 0 : n <= 0) return def
+  return n
+}
+const AUDIT_RETENTION_DAYS = retentionEnv('DSH_GATEWAY_AUDIT_RETENTION_DAYS', 30, true)
+const AUDIT_PURGE_INTERVAL_MS = retentionEnv('DSH_GATEWAY_AUDIT_PURGE_INTERVAL_MS', 3_600_000, false)
+
 // Fail-fast on default bootstrap credentials in production / on a non-loopback
 // bind (audit M-2), with an explicit escape hatch for local/dev containers.
 const ALLOW_DEFAULT_ADMIN =
@@ -171,6 +184,16 @@ await registerControl(app, store, registry, auth)
 
 // Version / hot-update API (git check + fast-forward pull + reload).
 await registerUpdater(app, auth, store)
+
+// Audit retention (ADR-0012): startup pass + periodic batched purge, with the
+// lazy write-path backstop. Wraps store.appendAudit, so it must be created
+// before the server starts accepting audit-generating requests.
+const auditRetention = createAuditRetention(store, {
+  retentionDays: AUDIT_RETENTION_DAYS,
+  purgeIntervalMs: AUDIT_PURGE_INTERVAL_MS,
+  log: { info: (m) => app.log.info(m), warn: (m) => app.log.warn(m) },
+})
+auditRetention.start()
 
 // no-store so the portal's post-update recovery poll (and any proxy/cache in
 // front of the gateway) always re-checks the live process instead of a stale body.
@@ -357,6 +380,7 @@ app.log.info(`gateway listening on http://${HOST}:${PORT}`)
 // Best-effort shutdown.
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, async () => {
+    auditRetention.stop()
     registry.stop()
     await app.close()
     await store.close()
