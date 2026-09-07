@@ -45,3 +45,24 @@ export interface AuditEvent {
   result: 'ok' | 'denied' | 'error'
   detail?: string
 }
+
+/**
+ * Persisted login-throttle state (persistent lockout): lets per-account
+ * lockouts and per-IP attempt windows survive a gateway restart instead of
+ * being wiped with the in-memory throttle (security audit M-2 backlog).
+ * Timestamps are epoch ms; `fails`/`attempts` are the raw decoded arrays
+ * (stored as JSON text in SQLite).
+ */
+export interface ThrottleAccount {
+  account: string
+  lockUntil: number
+  lockCount: number
+  fails: number[]
+  updatedAt: number
+}
+
+export interface ThrottleIp {
+  ip: string
+  attempts: number[]
+  updatedAt: number
+}

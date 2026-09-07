@@ -55,3 +55,20 @@ export const auditEvents = sqliteTable('audit_events', {
   result: text('result').notNull(), // ok | denied | error
   detail: text('detail'),
 })
+
+// Persistent login throttling (persistent lockout). Row per account / per IP;
+// `fails` and `attempts` hold epoch-ms arrays serialized as JSON text.
+// `updated_at` lets a startup sweep drop rows whose window fully expired.
+export const throttleAccounts = sqliteTable('throttle_accounts', {
+  account: text('account').primaryKey(),
+  lockUntil: integer('lock_until').notNull(), // 0 = not locked
+  lockCount: integer('lock_count').notNull(),
+  fails: text('fails').notNull(), // JSON array of epoch ms
+  updatedAt: integer('updated_at').notNull(),
+})
+
+export const throttleIps = sqliteTable('throttle_ips', {
+  ip: text('ip').primaryKey(),
+  attempts: text('attempts').notNull(), // JSON array of epoch ms
+  updatedAt: integer('updated_at').notNull(),
+})

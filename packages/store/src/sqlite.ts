@@ -18,6 +18,8 @@ import type {
   Assignment,
   PairingCode,
   AuditEvent,
+  ThrottleAccount,
+  ThrottleIp,
   Role,
   MachineStatus,
 } from './domain.js'
@@ -249,5 +251,66 @@ export class SqliteStore implements IStore {
       result: r.result as AuditEvent['result'],
       detail: r.detail ?? undefined,
     }))
+  }
+
+  // ---- Persistent login throttling (throttle state, JSON-encoded arrays) ----
+
+  async listThrottleAccounts(): Promise<ThrottleAccount[]> {
+    const rows = await this.db.select().from(schema.throttleAccounts)
+    return rows.map((r) => ({
+      account: r.account,
+      lockUntil: r.lockUntil,
+      lockCount: r.lockCount,
+      fails: JSON.parse(r.fails) as number[],
+      updatedAt: r.updatedAt,
+    }))
+  }
+
+  async saveThrottleAccount(a: ThrottleAccount): Promise<void> {
+    await this.db
+      .insert(schema.throttleAccounts)
+      .values({
+        account: a.account,
+        lockUntil: a.lockUntil,
+        lockCount: a.lockCount,
+        fails: JSON.stringify(a.fails),
+        updatedAt: a.updatedAt,
+      })
+      .onConflictDoUpdate({
+        target: schema.throttleAccounts.account,
+        set: {
+          lockUntil: a.lockUntil,
+          lockCount: a.lockCount,
+          fails: JSON.stringify(a.fails),
+          updatedAt: a.updatedAt,
+        },
+      })
+  }
+
+  async deleteThrottleAccount(account: string): Promise<void> {
+    await this.db.delete(schema.throttleAccounts).where(eq(schema.throttleAccounts.account, account))
+  }
+
+  async listThrottleIps(): Promise<ThrottleIp[]> {
+    const rows = await this.db.select().from(schema.throttleIps)
+    return rows.map((r) => ({
+      ip: r.ip,
+      attempts: JSON.parse(r.attempts) as number[],
+      updatedAt: r.updatedAt,
+    }))
+  }
+
+  async saveThrottleIp(r: ThrottleIp): Promise<void> {
+    await this.db
+      .insert(schema.throttleIps)
+      .values({ ip: r.ip, attempts: JSON.stringify(r.attempts), updatedAt: r.updatedAt })
+      .onConflictDoUpdate({
+        target: schema.throttleIps.ip,
+        set: { attempts: JSON.stringify(r.attempts), updatedAt: r.updatedAt },
+      })
+  }
+
+  async deleteThrottleIp(ip: string): Promise<void> {
+    await this.db.delete(schema.throttleIps).where(eq(schema.throttleIps.ip, ip))
   }
 }

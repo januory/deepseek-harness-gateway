@@ -83,4 +83,31 @@ describe('SqliteStore', () => {
     expect(await store.queryAudit({ machineId: 'm1' })).toHaveLength(1)
     await store.close()
   })
+
+  it('persists login-throttle state across reopen (persistent lockout)', async () => {
+    const filename = tmpfile()
+    const store = new SqliteStore({ filename })
+    await store.open()
+    await store.saveThrottleAccount({
+      account: 'admin',
+      lockUntil: 1_000_000_180_000,
+      lockCount: 2,
+      fails: [],
+      updatedAt: 1_000_000_000_000,
+    })
+    await store.saveThrottleIp({ ip: '10.0.0.9', attempts: [1_000_000_050_000, 1_000_000_060_000], updatedAt: 1_000_000_060_000 })
+    await store.close()
+
+    const reopened = new SqliteStore({ filename })
+    await reopened.open()
+    expect(await reopened.listThrottleAccounts()).toEqual([
+      { account: 'admin', lockUntil: 1_000_000_180_000, lockCount: 2, fails: [], updatedAt: 1_000_000_000_000 },
+    ])
+    expect(await reopened.listThrottleIps()).toEqual([
+      { ip: '10.0.0.9', attempts: [1_000_000_050_000, 1_000_000_060_000], updatedAt: 1_000_000_060_000 },
+    ])
+    await reopened.deleteThrottleAccount('admin')
+    expect(await reopened.listThrottleAccounts()).toHaveLength(0)
+    await reopened.close()
+  })
 })

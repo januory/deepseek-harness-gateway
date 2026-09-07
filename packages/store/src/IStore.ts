@@ -7,6 +7,8 @@ import type {
   Assignment,
   PairingCode,
   AuditEvent,
+  ThrottleAccount,
+  ThrottleIp,
 } from './domain.js'
 
 export interface IStore {
@@ -35,4 +37,12 @@ export interface IStore {
 
   appendAudit(e: AuditEvent): Promise<void>
   queryAudit(opts?: { since?: string; machineId?: string }): Promise<AuditEvent[]>
+
+  // Persistent login-throttle state (persistent lockout): survives restart.
+  listThrottleAccounts(): Promise<ThrottleAccount[]>
+  saveThrottleAccount(a: ThrottleAccount): Promise<void>
+  deleteThrottleAccount(account: string): Promise<void>
+  listThrottleIps(): Promise<ThrottleIp[]>
+  saveThrottleIp(r: ThrottleIp): Promise<void>
+  deleteThrottleIp(ip: string): Promise<void>
 }

@@ -6,6 +6,8 @@ import type {
   Assignment,
   PairingCode,
   AuditEvent,
+  ThrottleAccount,
+  ThrottleIp,
 } from './domain.js'
 import type { IStore } from './IStore.js'
 
@@ -15,6 +17,8 @@ export class InMemoryStore implements IStore {
   private assignments = new Map<string, Assignment>() // `${machineId}:${userId}`
   private pairingCodes = new Map<string, PairingCode>() // by codeHash
   private audit: AuditEvent[] = []
+  private throttleAccounts = new Map<string, ThrottleAccount>()
+  private throttleIps = new Map<string, ThrottleIp>()
 
   async open(): Promise<void> {}
   async close(): Promise<void> {}
@@ -84,5 +88,24 @@ export class InMemoryStore implements IStore {
         (opts.machineId === undefined || e.machineId === opts.machineId) &&
         (opts.since === undefined || e.ts >= opts.since),
     )
+  }
+
+  async listThrottleAccounts(): Promise<ThrottleAccount[]> {
+    return [...this.throttleAccounts.values()].map((a) => ({ ...a, fails: [...a.fails] }))
+  }
+  async saveThrottleAccount(a: ThrottleAccount): Promise<void> {
+    this.throttleAccounts.set(a.account, { ...a, fails: [...a.fails] })
+  }
+  async deleteThrottleAccount(account: string): Promise<void> {
+    this.throttleAccounts.delete(account)
+  }
+  async listThrottleIps(): Promise<ThrottleIp[]> {
+    return [...this.throttleIps.values()].map((r) => ({ ...r, attempts: [...r.attempts] }))
+  }
+  async saveThrottleIp(r: ThrottleIp): Promise<void> {
+    this.throttleIps.set(r.ip, { ...r, attempts: [...r.attempts] })
+  }
+  async deleteThrottleIp(ip: string): Promise<void> {
+    this.throttleIps.delete(ip)
   }
 }

@@ -6,6 +6,8 @@ export type {
   Assignment,
   PairingCode,
   AuditEvent,
+  ThrottleAccount,
+  ThrottleIp,
 } from './domain.js'
 export type { IStore } from './IStore.js'
 export { InMemoryStore } from './memory.js'
