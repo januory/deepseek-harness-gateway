@@ -10,7 +10,7 @@
 
 ## 功能特性
 
-- **网关** —— 唯一公网入口；机器注册审批、用户分配、席位、审计都收口在网关。
+- **网关** —— 唯一公网入口；机器注册审批、用户分配、审计都收口在网关。
 - **只出站的反向隧道** —— 客户机 dsh 通过 `wss` 出站连接；零入站监听。
 - **管理员审批** —— 机器凭配对码 + HMAC 挑战应答入网，由管理员审批。
 - **身份与授权都在网关** —— 机器身份由网关签发，所有授权都在网关侧执行，而非客户机。
@@ -99,6 +99,8 @@ dshgw                              # http://127.0.0.1:3300/health
 | `DSH_GATEWAY_SESSION_IDLE_TTL_MS` | （仅环境变量） | `28800000`（8 小时） |
 | `DSH_GATEWAY_SESSION_ABSOLUTE_TTL_MS` | （仅环境变量） | `86400000`（24 小时） |
 | `DSH_GATEWAY_SESSION_MAX` | （仅环境变量） | `10000` |
+| `DSH_GATEWAY_AUDIT_RETENTION_DAYS` | （仅环境变量） | `30` |
+| `DSH_GATEWAY_AUDIT_PURGE_INTERVAL_MS` | （仅环境变量） | `3600000`（1 小时） |
 
 ```sh
 dshgw --host 0.0.0.0 --port 8080 --db ./gw.db --admin-id admin --admin-password secret --pairing-codes 'code1,code2'
@@ -111,6 +113,7 @@ dshgw --help   # 列出全部参数
 - 在反向代理处终止 TLS 并设置 `DSH_GATEWAY_TRUST_PROXY=1`，使按 IP 的登录限流看到真实客户端；会话 Cookie 在 `https` 下自动带 `Secure`。
 - 设置强口令 `DSH_GATEWAY_ADMIN_PASSWORD`。非 loopback 绑定或 `NODE_ENV=production` 时，若仍使用默认口令，网关会**拒绝启动**，除非显式设置 `DSH_GATEWAY_ALLOW_DEFAULT_ADMIN=1`。
 - `/nodes` 需登录（管理员可见全部机器，普通用户仅可见分配给自己的机器）；`/health` 仅返回 `{ "ok": true }`。
+- 审计留存：`audit_events` 超过 `DSH_GATEWAY_AUDIT_RETENTION_DAYS`（默认 30 天）会被周期分批清理任务（`DSH_GATEWAY_AUDIT_PURGE_INTERVAL_MS`）自动清除，另有写路径懒清理兜底；设为 `0` 可关闭自动清理。如需窗口外留痕，请在此之前通过 `GET /gw/audit/export` 导出（`?format=csv`，支持与 `GET /gw/audit` 相同的 `since/until/machineId/actor/action/result` 过滤）。
 
 把接入插件装进客户机的 dsh（web profile）：
 

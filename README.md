@@ -10,7 +10,7 @@ Each customer machine runs a small plugin (`dsh-gateway-agent`) inside its own d
 
 ## Features
 
-- **Gateway** — one public entry point; machine registration/approval, user assignment, seats, and audit all live at the gateway.
+- **Gateway** — one public entry point; machine registration/approval, user assignment, and audit all live at the gateway.
 - **Outbound-only reverse tunnel** — customer dsh connects out over `wss`; zero inbound listeners.
 - **Admin approval** — machines join via a pairing code + HMAC challenge-response, approved by an administrator.
 - **Gateway-held identity & authorization** — machine identity is issued by the gateway, and all authorization is enforced at the gateway rather than on the customer machine.
@@ -114,7 +114,7 @@ Docker-only env vars (no CLI flag): `DSH_GATEWAY_BUILD_CMD` (default `pnpm -r bu
 - Terminate TLS at a reverse proxy and set `DSH_GATEWAY_TRUST_PROXY=1` so per-IP login throttling sees the real client; the session cookie gets `Secure` automatically over `https`.
 - Set a strong `DSH_GATEWAY_ADMIN_PASSWORD`. On a non-loopback bind or `NODE_ENV=production`, the gateway **refuses to start** with the default password unless `DSH_GATEWAY_ALLOW_DEFAULT_ADMIN=1` is set explicitly.
 - `/nodes` requires a logged-in session (admins see all machines, regular users only their assigned ones); `/health` returns only `{ "ok": true }`.
-- Audit retention (ADR-0012): `audit_events` are auto-purged past `DSH_GATEWAY_AUDIT_RETENTION_DAYS` (default 30) by a batched periodic task (`DSH_GATEWAY_AUDIT_PURGE_INTERVAL_MS`) plus a lazy write-path backstop; set retention to `0` to disable auto-cleanup. Export the log before that window closes: admins can call `GET /gw/audit/export` (`?format=csv`, plus the same `since/until/machineId/actor/action/result` filters as `GET /gw/audit`).
+- Audit retention: `audit_events` are auto-purged past `DSH_GATEWAY_AUDIT_RETENTION_DAYS` (default 30) by a batched periodic task (`DSH_GATEWAY_AUDIT_PURGE_INTERVAL_MS`) plus a lazy write-path backstop; set retention to `0` to disable auto-cleanup. Export the log before that window closes: admins can call `GET /gw/audit/export` (`?format=csv`, plus the same `since/until/machineId/actor/action/result` filters as `GET /gw/audit`).
 
 Install the agent plugin into a customer machine's dsh (web profile):
 
