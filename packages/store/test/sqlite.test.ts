@@ -3,6 +3,7 @@ import { rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import Database from 'better-sqlite3'
 import { SqliteStore } from '../src/index.js'
 
 const files: string[] = []
@@ -109,5 +110,79 @@ describe('SqliteStore', () => {
     await reopened.deleteThrottleAccount('admin')
     expect(await reopened.listThrottleAccounts()).toHaveLength(0)
     await reopened.close()
+  })
+
+  it('filters audit by time/actor/action/result and paginates chronologically', async () => {
+    const store = new SqliteStore({ filename: ':memory:' })
+    await store.open()
+    const rows = [
+      { ts: '2026-09-01T00:00:00.000Z', actor: 'admin', action: 'login', result: 'ok' as const },
+      { ts: '2026-09-02T00:00:00.000Z', actor: 'admin', action: 'approve', result: 'ok' as const, machineId: 'm1' },
+      { ts: '2026-09-03T00:00:00.000Z', actor: 'alice', action: 'login', result: 'denied' as const },
+      { ts: '2026-09-04T00:00:00.000Z', actor: 'admin', action: 'approve', result: 'ok' as const, machineId: 'm2' },
+      { ts: '2026-09-05T00:00:00.000Z', actor: 'admin', action: 'approve', result: 'error' as const },
+    ]
+    for (const r of rows) await store.appendAudit(r)
+
+    expect(await store.queryAudit({ since: '2026-09-03T00:00:00.000Z' })).toHaveLength(3)
+    expect(await store.queryAudit({ until: '2026-09-02T00:00:00.000Z' })).toHaveLength(2)
+    expect(await store.queryAudit({ since: '2026-09-02T00:00:00.000Z', until: '2026-09-04T00:00:00.000Z' })).toHaveLength(3)
+    expect(await store.queryAudit({ actor: 'admin' })).toHaveLength(4)
+    expect(await store.queryAudit({ action: 'approve' })).toHaveLength(3)
+    expect(await store.queryAudit({ result: 'ok' })).toHaveLength(3)
+    expect(await store.queryAudit({ machineId: 'm1' })).toHaveLength(1)
+    expect(
+      await store.queryAudit({ actor: 'admin', action: 'approve', machineId: 'm2', since: '2026-09-04T00:00:00.000Z' }),
+    ).toHaveLength(1)
+
+    // Pagination is chronological over the same filters.
+    const page1 = await store.queryAudit({ action: 'approve', limit: 2 })
+    expect(page1.map((e) => e.ts)).toEqual(['2026-09-02T00:00:00.000Z', '2026-09-04T00:00:00.000Z'])
+    const page2 = await store.queryAudit({ action: 'approve', limit: 2, offset: 2 })
+    expect(page2.map((e) => e.ts)).toEqual(['2026-09-05T00:00:00.000Z'])
+    // No limit → offset ignored (full set), mirroring the memory store.
+    expect(await store.queryAudit({ offset: 3 })).toHaveLength(5)
+    await store.close()
+  })
+
+  it('purges audit rows older than a cutoff, batched or in full', async () => {
+    const store = new SqliteStore({ filename: ':memory:' })
+    await store.open()
+    const rows = [
+      '2026-09-01T00:00:00.000Z',
+      '2026-09-02T00:00:00.000Z',
+      '2026-09-03T00:00:00.000Z',
+      '2026-09-04T00:00:00.000Z',
+    ].map((ts) => ({ ts, actor: 'admin', action: 'login', result: 'ok' as const }))
+    for (const r of rows) await store.appendAudit(r)
+
+    // Batched: deletes at most `limit` of the OLDEST matching rows.
+    expect(await store.purgeAudit('2026-09-04T00:00:00.000Z', 2)).toBe(2)
+    expect((await store.queryAudit()).map((e) => e.ts)).toEqual([
+      '2026-09-03T00:00:00.000Z',
+      '2026-09-04T00:00:00.000Z',
+    ])
+    // Strict cutoff: ts === cutoff is kept, so only Sep-03 (older) goes.
+    expect(await store.purgeAudit('2026-09-04T00:00:00.000Z', 2)).toBe(1)
+    expect((await store.queryAudit()).map((e) => e.ts)).toEqual(['2026-09-04T00:00:00.000Z'])
+    // No limit → everything older than the cutoff is deleted at once.
+    expect(await store.purgeAudit('2026-09-05T00:00:00.000Z')).toBe(1)
+    expect(await store.queryAudit()).toHaveLength(0)
+    expect(await store.purgeAudit('2026-09-05T00:00:00.000Z')).toBe(0)
+    await store.close()
+  })
+
+  it('applies migration 0003 (audit_events.ts index) on fresh open', async () => {
+    const filename = tmpfile()
+    const store = new SqliteStore({ filename })
+    await store.open()
+    await store.close()
+    // Index existence is observable via sqlite_master on the same file.
+    const db = new Database(filename, { readonly: true })
+    const row = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='audit_events_ts_idx'")
+      .get() as { name: string } | undefined
+    expect(row?.name).toBe('audit_events_ts_idx')
+    db.close()
   })
 })

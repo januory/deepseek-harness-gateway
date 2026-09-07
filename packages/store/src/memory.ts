@@ -9,7 +9,7 @@ import type {
   ThrottleAccount,
   ThrottleIp,
 } from './domain.js'
-import type { IStore } from './IStore.js'
+import type { AuditQueryOptions, IStore } from './IStore.js'
 
 export class InMemoryStore implements IStore {
   private users = new Map<string, User>()
@@ -82,12 +82,37 @@ export class InMemoryStore implements IStore {
   async appendAudit(e: AuditEvent): Promise<void> {
     this.audit.push(e)
   }
-  async queryAudit(opts: { since?: string; machineId?: string } = {}): Promise<AuditEvent[]> {
-    return this.audit.filter(
-      (e) =>
-        (opts.machineId === undefined || e.machineId === opts.machineId) &&
-        (opts.since === undefined || e.ts >= opts.since),
-    )
+
+  async queryAudit(opts: AuditQueryOptions = {}): Promise<AuditEvent[]> {
+    // Mirror SqliteStore semantics: filter, then chronological order, then
+    // pagination (offset without limit = everything from that position on).
+    const rows = this.audit
+      .filter(
+        (e) =>
+          (opts.since === undefined || e.ts >= opts.since) &&
+          (opts.until === undefined || e.ts <= opts.until) &&
+          (opts.machineId === undefined || e.machineId === opts.machineId) &&
+          (opts.actor === undefined || e.actor === opts.actor) &&
+          (opts.action === undefined || e.action === opts.action) &&
+          (opts.result === undefined || e.result === opts.result),
+      )
+      .sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0))
+    const start = opts.offset ?? 0
+    return opts.limit === undefined ? rows : rows.slice(start, start + opts.limit)
+  }
+
+  async purgeAudit(beforeTs: string, limit?: number): Promise<number> {
+    let removed = 0
+    const survivors: AuditEvent[] = []
+    for (const e of this.audit) {
+      if (e.ts < beforeTs && (limit === undefined || removed < limit)) {
+        removed++
+        continue
+      }
+      survivors.push(e)
+    }
+    this.audit = survivors
+    return removed
   }
 
   async listThrottleAccounts(): Promise<ThrottleAccount[]> {

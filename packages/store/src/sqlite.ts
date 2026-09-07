@@ -11,7 +11,7 @@ import Database from 'better-sqlite3'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
-import { and, asc, eq, gte } from 'drizzle-orm'
+import { and, asc, eq, gte, inArray, lt, lte } from 'drizzle-orm'
 import type {
   User,
   Machine,
@@ -23,7 +23,7 @@ import type {
   Role,
   MachineStatus,
 } from './domain.js'
-import type { IStore } from './IStore.js'
+import type { AuditQueryOptions, IStore } from './IStore.js'
 import * as schema from './schema.js'
 
 type DB = BetterSQLite3Database<typeof schema>
@@ -234,15 +234,28 @@ export class SqliteStore implements IStore {
     })
   }
 
-  async queryAudit(opts: { since?: string; machineId?: string } = {}): Promise<AuditEvent[]> {
+  async queryAudit(opts: AuditQueryOptions = {}): Promise<AuditEvent[]> {
     const conds = []
-    if (opts.machineId !== undefined) conds.push(eq(schema.auditEvents.machineId, opts.machineId))
     if (opts.since !== undefined) conds.push(gte(schema.auditEvents.ts, opts.since))
-    const rows = await this.db
+    if (opts.until !== undefined) conds.push(lte(schema.auditEvents.ts, opts.until))
+    if (opts.machineId !== undefined) conds.push(eq(schema.auditEvents.machineId, opts.machineId))
+    if (opts.actor !== undefined) conds.push(eq(schema.auditEvents.actor, opts.actor))
+    if (opts.action !== undefined) conds.push(eq(schema.auditEvents.action, opts.action))
+    if (opts.result !== undefined) conds.push(eq(schema.auditEvents.result, opts.result))
+    // Chronological order; offset only applies together with a page size
+    // (without `limit` the full matching set is returned) — sqlite/memory parity.
+    const base = this.db
       .select()
       .from(schema.auditEvents)
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(asc(schema.auditEvents.ts))
+    const paged =
+      opts.limit !== undefined && opts.offset !== undefined && opts.offset > 0
+        ? base.limit(Math.max(0, opts.limit)).offset(opts.offset)
+        : opts.limit !== undefined
+          ? base.limit(Math.max(0, opts.limit))
+          : base
+    const rows = await paged
     return rows.map((r) => ({
       ts: r.ts,
       actor: r.actor,
@@ -251,6 +264,31 @@ export class SqliteStore implements IStore {
       result: r.result as AuditEvent['result'],
       detail: r.detail ?? undefined,
     }))
+  }
+
+  async purgeAudit(beforeTs: string, limit?: number): Promise<number> {
+    if (limit !== undefined && limit <= 0) return 0
+    if (limit === undefined) {
+      // Full cleanup pass.
+      const res = await this.db.delete(schema.auditEvents).where(lt(schema.auditEvents.ts, beforeTs)).run()
+      return res.changes
+    }
+    // Batched cleanup (ADR-0012): delete only the `limit` OLDEST matching rows
+    // per call so a long purge never runs as one big DELETE holding the WAL
+    // (and the matching query rides the audit_events_ts_idx index).
+    const target = await this.db
+      .select({ id: schema.auditEvents.id })
+      .from(schema.auditEvents)
+      .where(lt(schema.auditEvents.ts, beforeTs))
+      .orderBy(asc(schema.auditEvents.id))
+      .limit(limit)
+      .all()
+    if (target.length === 0) return 0
+    const res = await this.db
+      .delete(schema.auditEvents)
+      .where(inArray(schema.auditEvents.id, target.map((r) => r.id)))
+      .run()
+    return res.changes
   }
 
   // ---- Persistent login throttling (throttle state, JSON-encoded arrays) ----

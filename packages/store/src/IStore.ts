@@ -11,6 +11,22 @@ import type {
   ThrottleIp,
 } from './domain.js'
 
+/**
+ * Audit query filters + pagination (ADR-0012). All filters compose; results
+ * are ordered by `ts` ascending (chronological). `offset` is honored together
+ * with `limit`; without `limit` the full matching set is returned.
+ */
+export interface AuditQueryOptions {
+  since?: string
+  until?: string
+  machineId?: string
+  actor?: string
+  action?: string
+  result?: string
+  limit?: number
+  offset?: number
+}
+
 export interface IStore {
   open(): Promise<void>
   close(): Promise<void>
@@ -36,7 +52,14 @@ export interface IStore {
   listPairingCodes(): Promise<PairingCode[]>
 
   appendAudit(e: AuditEvent): Promise<void>
-  queryAudit(opts?: { since?: string; machineId?: string }): Promise<AuditEvent[]>
+  queryAudit(opts?: AuditQueryOptions): Promise<AuditEvent[]>
+  /**
+   * Retention cleanup (ADR-0012): delete audit rows with `ts < beforeTs`.
+   * With `limit` set, at most that many of the OLDEST matching rows are
+   * deleted per call (callers loop for batch cleanup); without it, all
+   * matching rows are deleted. Returns the number of rows deleted.
+   */
+  purgeAudit(beforeTs: string, limit?: number): Promise<number>
 
   // Persistent login-throttle state (persistent lockout): survives restart.
   listThrottleAccounts(): Promise<ThrottleAccount[]>
