@@ -58,6 +58,16 @@ function qs(params: Record<string, string | undefined>): string {
   return s ? '?' + s : ''
 }
 
+/** Filters shared by GET /gw/audit and /gw/audit/export (ADR-0012). */
+export type AuditFilters = {
+  since?: string
+  until?: string
+  machineId?: string
+  actor?: string
+  action?: string
+  result?: string
+}
+
 export const api = {
   // ---- session --------------------------------------------------------------
   async me(): Promise<PublicUser | null> {
@@ -105,8 +115,10 @@ export const api = {
     }),
 
   // ---- audit -------------------------------------------------------------------------
-  audit: (filters: { machineId?: string; since?: string } = {}) =>
-    req<{ events: AuditEvent[] }>('/gw/audit' + qs(filters)),
+  audit: (filters: AuditFilters = {}) => req<{ events: AuditEvent[] }>('/gw/audit' + qs(filters)),
+  /** Admin export URL (ADR-0012): streams the filtered events as JSONL/CSV. */
+  auditExportHref: (format: 'jsonl' | 'csv', filters: AuditFilters = {}) =>
+    '/gw/audit/export' + qs({ ...filters, format }),
 
   // ---- version / hot-update ------------------------------------------------------------
   version: () => req<VersionInfo>('/gw/version'),

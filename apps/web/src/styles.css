@@ -998,6 +998,19 @@ h3 {
   display: none;
 }
 
+/* audit view is rendered as a direct child of .main__inner; keep the same
+   vertical rhythm when it wraps its own blocks (for scope-able rules) */
+.audit-view {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* audit event cards are the mobile alternative to the audit table (≤1024px) */
+.audit-cards {
+  display: none;
+}
+
 /* ---- responsive / mobile ------------------------------------------------------- */
 
 @media (max-width: 1024px) {
@@ -1112,6 +1125,10 @@ h3 {
     gap: 14px;
   }
 
+  .audit-view {
+    gap: 14px;
+  }
+
   .page-header {
     flex-direction: column;
     align-items: flex-start;
@@ -1212,6 +1229,60 @@ h3 {
     flex: 1 1 auto;
     justify-content: center;
   }
+
+  /* audit: switch from the wide 5-column table to stacked event cards */
+  .audit-table {
+    display: none;
+  }
+
+  .audit-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 2px 0;
+  }
+
+  .audit-card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .audit-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .audit-card__head .muted {
+    font-size: 13px;
+  }
+
+  .audit-card__row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .audit-card__label {
+    flex: none;
+    width: 44px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .audit-card__value {
+    font-size: 14px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
 }
 
 /* Phones: stack search and status filter full-width for large tap targets. */
@@ -1225,5 +1296,20 @@ h3 {
   .machines-toolbar .select {
     flex: none;
     width: 100%;
+  }
+
+  /* audit: roomy action buttons (export/refresh) with full-width tap targets */
+  .audit-view .page-header__actions {
+    align-items: stretch;
+  }
+
+  .audit-view .page-header__actions .btn {
+    justify-content: center;
+    min-height: 42px;
+    padding: 8px 12px;
+  }
+
+  .audit-card {
+    padding: 13px 14px;
   }
 }
