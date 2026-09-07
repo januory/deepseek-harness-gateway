@@ -436,6 +436,49 @@ h3 {
   cursor: pointer;
 }
 
+/* password field with a show/hide eye toggle */
+.password-input {
+  position: relative;
+  width: 100%;
+}
+
+.password-input .input {
+  width: 100%;
+  padding-right: 40px;
+}
+
+/* capsule login pill: give the eye a bit more room so it clears the text */
+.password-input .login-input.input {
+  padding-right: 46px;
+}
+
+.password-input__toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 0;
+}
+
+.password-input__toggle:hover {
+  color: var(--text);
+}
+
+.password-input__toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

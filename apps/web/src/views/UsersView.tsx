@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import type { PublicUser, Role, UserView } from '../types'
-import { Button, Card, Empty, Field, Modal, PageHeader, RoleBadge, Spinner, useToast } from '../ui'
+import { Button, Card, Empty, Field, Modal, PageHeader, PasswordInput, RoleBadge, Spinner, useToast } from '../ui'
 
 export function UsersView({ me }: { me: PublicUser }) {
   const isSystemAdmin = me.role === 'system-admin'
@@ -113,9 +113,7 @@ export function UsersView({ me }: { me: PublicUser }) {
             />
           </Field>
           <Field label="密码">
-            <input
-              className="input"
-              type="password"
+            <PasswordInput
               placeholder="密码"
               name="newUserPassword"
               autoComplete="new-password"
@@ -174,9 +172,7 @@ export function UsersView({ me }: { me: PublicUser }) {
               </select>
             </Field>
             <Field label="重置密码（留空则保持不变）">
-              <input
-                className="input"
-                type="password"
+              <PasswordInput
                 placeholder="新密码"
                 autoComplete="new-password"
                 value={edit.password}

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api'
 import type { PublicUser } from '../types'
+import { PasswordInput } from '../ui'
 import whaleMark from '../assets/whale-mark.svg'
 
 const GITHUB_URL = 'https://github.com/januory/deepseek-harness-gateway'
@@ -57,9 +58,8 @@ export function LoginView({ onLogin }: { onLogin: (u: PublicUser) => void }) {
 
         <label className="login-field">
           <span className="login-field__label">密码</span>
-          <input
-            className="input login-input"
-            type="password"
+          <PasswordInput
+            className="login-input"
             placeholder="请输入密码"
             value={password}
             onChange={(e) => setPassword(e.target.value)}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import type { PublicUser, UpdateStatus, VersionInfo } from '../types'
-import { Button, Card, Empty, Field, PageHeader, RoleBadge, Spinner, useToast } from '../ui'
+import { Button, Card, Empty, Field, PageHeader, PasswordInput, RoleBadge, Spinner, useToast } from '../ui'
 
 type SettingsTab = 'account' | 'system'
 
@@ -189,9 +189,7 @@ export function SettingsView({ me }: { me: PublicUser }) {
           <Card title="修改密码">
             <div className="form-grid">
               <Field label="当前密码">
-                <input
-                  className="input"
-                  type="password"
+                <PasswordInput
                   autoComplete="current-password"
                   placeholder="当前密码"
                   value={oldPassword}
@@ -199,9 +197,7 @@ export function SettingsView({ me }: { me: PublicUser }) {
                 />
               </Field>
               <Field label="新密码">
-                <input
-                  className="input"
-                  type="password"
+                <PasswordInput
                   autoComplete="new-password"
                   placeholder="至少 6 位"
                   value={newPassword}
@@ -209,9 +205,7 @@ export function SettingsView({ me }: { me: PublicUser }) {
                 />
               </Field>
               <Field label="确认新密码">
-                <input
-                  className="input"
-                  type="password"
+                <PasswordInput
                   autoComplete="new-password"
                   placeholder="再次输入新密码"
                   value={confirmPassword}

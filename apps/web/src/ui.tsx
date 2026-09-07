@@ -14,6 +14,63 @@ export function Button({
   return <button className={`btn btn--${variant} ${className}`} {...rest} />
 }
 
+// ---- password input (show/hide eye) --------------------------------------------
+
+function EyeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+}
+
+function EyeOffIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+      <path d="M1 12s4-8 11-8c2.1 0 3.96.66 5.5 1.6M6.61 6.61A13.5 13.5 0 0 0 1 12s4 8 11 8c2.1 0 3.96-.66 5.5-1.6" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+  )
+}
+
+/**
+ * Password field with a show/hide eye toggle. There is no "confirm password"
+ * field here (create user / reset password), so the toggle lets a user verify
+ * what they typed. `className` is applied to the underlying <input> (e.g.
+ * 'login-input' for the capsule login form); the toggle sits inside the field.
+ */
+export function PasswordInput({
+  value,
+  onChange,
+  className = '',
+  ...rest
+}: Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'>) {
+  const [visible, setVisible] = useState(false)
+  return (
+    <div className="password-input">
+      <input
+        className={`input ${className}`}
+        type={visible ? 'text' : 'password'}
+        value={value}
+        onChange={onChange}
+        {...rest}
+      />
+      <button
+        type="button"
+        className="password-input__toggle"
+        aria-label={visible ? '隐藏密码' : '显示密码'}
+        title={visible ? '隐藏密码' : '显示密码'}
+        aria-pressed={visible}
+        onClick={() => setVisible((v) => !v)}
+      >
+        {visible ? <EyeOffIcon /> : <EyeIcon />}
+      </button>
+    </div>
+  )
+}
+
 // ---- badges / dots ------------------------------------------------------------
 
 export function StatusDot({ online }: { online: boolean }) {
