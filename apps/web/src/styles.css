@@ -1227,7 +1227,20 @@ h3 {
     height: auto;
     min-height: 100vh;
     min-height: 100dvh;
-    /* Disable pinch-zoom on phones: allow only vertical panning. */
+    /* Disable pinch-zoom on phones: allow only vertical panning. The portal is
+       an app-like surface (installed PWA), so two-finger zoom is turned off
+       here and via the viewport meta user-scalable=no. */
+    touch-action: pan-y;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Touch on any descendant resolves against the nearest scroll container, so
+     pinning the app's scroll containers to pan-y also blocks pinch-zoom when a
+     gesture starts on content (cards, tables, buttons) rather than the body. */
+  .shell,
+  .main,
+  .main__inner,
+  .sidebar {
     touch-action: pan-y;
   }
 
