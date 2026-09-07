@@ -16,7 +16,7 @@
 // serves TypeScript from source (`tsx`), so it does not wait for the build.
 
 import { execFile, spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -26,6 +26,17 @@ import type { Auth } from './auth.js'
 
 const SEP = '\u001f' // unit separator — safe delimiter for git --format
 const LOG_FORMAT = ['%H', '%h', '%an', '%ad', '%s'].join(SEP)
+
+// Package version of the gateway server (e.g. "0.2.2"), read from its own
+// package.json. Resolved relative to this module so both dev (src/updater.ts)
+// and the bundled CLI (dist/cli.js) land on apps/gateway/package.json.
+let PACKAGE_VERSION = '0.0.0'
+try {
+  const pkgUrl = new URL('../package.json', import.meta.url)
+  PACKAGE_VERSION = (JSON.parse(readFileSync(pkgUrl, 'utf8')) as { version?: string }).version ?? '0.0.0'
+} catch {
+  /* keep the fallback */
+}
 
 export interface CommitInfo {
   hash: string
@@ -248,6 +259,11 @@ const ADMIN_ROLES: Role[] = ['admin', 'system-admin']
 export async function registerUpdater(app: FastifyInstance, auth: Auth, store: IStore): Promise<void> {
   const { requireRole } = auth
   const log: GitLog = app.log
+
+  // Package version of the running gateway server (e.g. "0.2.2"), for the
+  // portal's version badge. Any authenticated user may read it (the git/branch
+  // detail below stays admin-only).
+  app.get('/gw/app-version', { preHandler: requireRole() }, async () => ({ version: PACKAGE_VERSION }))
 
   app.get('/gw/version', { preHandler: requireRole(...ADMIN_ROLES) }, async () => {
     try {

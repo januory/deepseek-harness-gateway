@@ -32,6 +32,14 @@ function Shell({ me, onLogout }: { me: PublicUser; onLogout: () => void }) {
   const [view, setView] = useState<ViewKey>('machines')
   const [consoleMachine, setConsoleMachine] = useState<MachineView | null>(null)
   const [navOpen, setNavOpen] = useState(false)
+  const [appVersion, setAppVersion] = useState<string | null>(null)
+
+  useEffect(() => {
+    api
+      .appVersion()
+      .then((r) => setAppVersion(r.version))
+      .catch(() => setAppVersion(null))
+  }, [])
 
   const items = NAV.filter((n) => n.visible(me))
   const active = items.some((n) => n.key === view) ? view : items[0].key
@@ -49,6 +57,7 @@ function Shell({ me, onLogout }: { me: PublicUser; onLogout: () => void }) {
         <div className="sidebar__brand">
           DSH-Gateway
           <small>Deepseek-Harness 网关</small>
+          {appVersion ? <span className="sidebar__version">v{appVersion}</span> : null}
           <a
             className="sidebar__github"
             href="https://github.com/januory/deepseek-harness-gateway"

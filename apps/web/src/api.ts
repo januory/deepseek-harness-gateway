@@ -132,6 +132,8 @@ export const api = {
     '/gw/audit/export' + qs({ ...filters, format }),
 
   // ---- version / hot-update ------------------------------------------------------------
+  /** Gateway server package version (e.g. "0.2.2"), for the sidebar badge. */
+  appVersion: () => req<{ version: string }>('/gw/app-version'),
   version: () => req<VersionInfo>('/gw/version'),
   checkVersion: () => req<UpdateStatus>('/gw/version/check', { method: 'POST' }),
   updateVersion: () => req<UpdateResult>('/gw/version/update', { method: 'POST' }),
