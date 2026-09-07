@@ -85,6 +85,26 @@ describe('SqliteStore', () => {
     await store.close()
   })
 
+  it('deletes a user and cascades assignments (audit retained)', async () => {
+    const store = new SqliteStore({ filename: ':memory:' })
+    await store.open()
+    await store.upsertMachine({ id: 'm1', name: 'dev-box', nodeKeyHash: 'h1', status: 'approved', configRev: 0, createdAt: '2026-09-01T00:00:00Z' })
+    await store.upsertUser({ id: 'u1', role: 'user', authHash: 'ah1' })
+    await store.upsertUser({ id: 'u2', role: 'admin', authHash: 'ah2' })
+    await store.addAssignment({ machineId: 'm1', userId: 'u1', createdAt: '2026-09-01T00:00:01Z' })
+    await store.appendAudit({ ts: '2026-09-01T00:00:03Z', actor: 'u1', action: 'login', result: 'ok' })
+
+    await store.deleteUser('u1')
+
+    expect(await store.getUser('u1')).toBeUndefined()
+    expect((await store.listUsers()).map((u) => u.id)).toEqual(['u2'])
+    expect(await store.listAssignmentsForUser('u1')).toHaveLength(0)
+    expect((await store.listAssignments()).map((a) => a.userId)).toEqual([])
+    // Audit is retained even after the user is gone.
+    expect(await store.queryAudit({ actor: 'u1' })).toHaveLength(1)
+    await store.close()
+  })
+
   it('persists login-throttle state across reopen (persistent lockout)', async () => {
     const filename = tmpfile()
     const store = new SqliteStore({ filename })

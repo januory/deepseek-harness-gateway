@@ -34,6 +34,8 @@ export interface IStore {
   upsertUser(u: User): Promise<void>
   getUser(id: string): Promise<User | undefined>
   listUsers(): Promise<User[]>
+  /** Delete a user record; cascades assignments (audit is retained). */
+  deleteUser(id: string): Promise<void>
 
   upsertMachine(m: Machine): Promise<void>
   getMachine(id: string): Promise<Machine | undefined>

@@ -116,6 +116,11 @@ export class SqliteStore implements IStore {
     return rows.map((r) => ({ id: r.id, role: r.role as Role, authHash: r.authHash }))
   }
 
+  async deleteUser(id: string): Promise<void> {
+    // FK ON DELETE CASCADE removes assignments.
+    await this.db.delete(schema.users).where(eq(schema.users.id, id))
+  }
+
   async upsertMachine(m: Machine): Promise<void> {
     const row = machineRow(m)
     await this.db

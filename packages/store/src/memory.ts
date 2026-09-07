@@ -32,6 +32,12 @@ export class InMemoryStore implements IStore {
   async listUsers(): Promise<User[]> {
     return [...this.users.values()]
   }
+  async deleteUser(id: string): Promise<void> {
+    this.users.delete(id)
+    for (const key of [...this.assignments.keys()]) {
+      if (key.endsWith(`:${id}`)) this.assignments.delete(key)
+    }
+  }
 
   async upsertMachine(m: Machine): Promise<void> {
     this.machines.set(m.id, m)

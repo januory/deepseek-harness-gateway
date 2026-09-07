@@ -56,11 +56,13 @@ export const AUDIT_ACTIONS = [
   'bootstrap_admin',
   'change_password',
   'delete_machine',
+  'delete_user',
   'login',
   'login_throttled',
   'register_pending',
   'rename_machine',
   'revoke_machine',
+  'update_user',
   'version_update',
 ] as const
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]

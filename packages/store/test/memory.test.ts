@@ -19,6 +19,23 @@ describe('InMemoryStore', () => {
     expect(await store.listMachines()).toHaveLength(1)
   })
 
+  it('deletes a user and cascades assignments', async () => {
+    const store = new InMemoryStore()
+    await store.open()
+
+    await store.upsertMachine({ id: 'm1', name: 'dev-box', nodeKeyHash: 'h1', status: 'approved', configRev: 0, createdAt: '2026-09-01T00:00:00Z' })
+    await store.upsertUser({ id: 'u1', role: 'user', authHash: 'ah1' })
+    await store.upsertUser({ id: 'u2', role: 'admin', authHash: 'ah2' })
+    await store.addAssignment({ machineId: 'm1', userId: 'u1', createdAt: '2026-09-01T00:00:01Z' })
+
+    await store.deleteUser('u1')
+
+    expect(await store.getUser('u1')).toBeUndefined()
+    expect((await store.listUsers()).map((u) => u.id)).toEqual(['u2'])
+    expect(await store.listAssignmentsForUser('u1')).toHaveLength(0)
+    expect((await store.listAssignments()).map((a) => a.userId)).toEqual([])
+  })
+
   it('filters audit by machine', async () => {
     const store = new InMemoryStore()
     await store.appendAudit({ ts: '2026-09-01T00:00:00Z', actor: 'admin', machineId: 'm1', action: 'approve', result: 'ok' })

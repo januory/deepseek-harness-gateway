@@ -15,6 +15,9 @@ import { hashPassword, verifyPassword } from './auth.js'
 /** Roles that can manage machines/users/assignments/audit. */
 const ADMIN_ROLES: Role[] = ['admin', 'system-admin']
 
+/** All valid roles, for validating an edit target role. */
+const ROLES: Role[] = ['system-admin', 'admin', 'user']
+
 /** Cap for a single GET /gw/audit page. Exports page internally at this size. */
 const AUDIT_PAGE_MAX = 1000
 
@@ -124,6 +127,89 @@ export async function registerControl(app: FastifyInstance, store: IStore, regis
     }
     await store.upsertUser({ id, role: targetRole, authHash: await hashPassword(password) })
     return { ok: true, user: { id, role: targetRole } }
+  })
+
+  // Edit a user: change the role and/or reset the password. Partial — only the
+  // fields present in the body are touched; an absent password keeps the old
+  // one. System-admin accounts can only be managed by a system admin (mirrors
+  // the create-guard below), and a user cannot edit their own row here (self
+  // password changes go through /gw/me/password).
+  app.patch('/gw/users/:id', { preHandler: requireRole(...ADMIN_ROLES) }, async (req, reply) => {
+    const actor = req.user!
+    const id = (req.params as any).id as string
+    if (id === actor.id) return reply.code(400).send({ error: '不能编辑自己的账号' })
+    const target = await store.getUser(id)
+    if (!target) return reply.code(404).send({ error: 'user not found' })
+
+    const body = (req.body ?? {}) as { role?: unknown; password?: unknown }
+    const hasRole = typeof body.role === 'string'
+    const hasPassword = typeof body.password === 'string' && body.password.length > 0
+    if (!hasRole && !hasPassword) return reply.code(400).send({ error: 'nothing to update' })
+
+    let nextRole = target.role
+    if (hasRole && (ROLES as string[]).includes(body.role as string)) {
+      nextRole = body.role as Role
+    } else if (hasRole) {
+      return reply.code(400).send({ error: 'invalid role' })
+    }
+
+    // A plain admin must not be able to promote themselves/others to system
+    // admin, nor to edit a system-admin account (reassignment / demotion).
+    if (actor.role !== 'system-admin' && (target.role === 'system-admin' || nextRole === 'system-admin')) {
+      return reply.code(403).send({ error: 'only a system admin can manage system admins' })
+    }
+
+    let authHash = target.authHash
+    if (hasPassword) {
+      const pw = body.password as string
+      if (pw.length < 6) return reply.code(400).send({ error: '新密码至少 6 位' })
+      authHash = await hashPassword(pw)
+    }
+
+    const changes: string[] = []
+    if (nextRole !== target.role) changes.push(`role: ${target.role} -> ${nextRole}`)
+    if (changes.length === 0 && hasPassword) changes.push('password reset')
+
+    if (changes.length > 0) {
+      await store.upsertUser({ id, role: nextRole, authHash })
+      await store.appendAudit({
+        ts: new Date().toISOString(),
+        actor: actor.id,
+        action: 'update_user',
+        result: 'ok',
+        detail: changes.join('; '),
+      })
+    }
+    return { ok: true, user: { id, role: nextRole } }
+  })
+
+  // Delete a user. Forbidden on your own account and on the last remaining
+  // system admin; a plain admin cannot delete a system-admin account.
+  app.delete('/gw/users/:id', { preHandler: requireRole(...ADMIN_ROLES) }, async (req, reply) => {
+    const actor = req.user!
+    const id = (req.params as any).id as string
+    if (id === actor.id) return reply.code(400).send({ error: '不能删除自己的账号' })
+    const target = await store.getUser(id)
+    if (!target) return reply.code(404).send({ error: 'user not found' })
+    if (actor.role !== 'system-admin' && target.role === 'system-admin') {
+      return reply.code(403).send({ error: 'only a system admin can delete a system admin' })
+    }
+    if (target.role === 'system-admin') {
+      const sysAdmins = (await store.listUsers()).filter((u) => u.role === 'system-admin')
+      if (sysAdmins.length <= 1) return reply.code(400).send({ error: '不能删除最后一个系统管理员' })
+    }
+    await store.deleteUser(id)
+    // A re-created account with the same id should not inherit the deleted
+    // account's lockout state.
+    await store.deleteThrottleAccount(id)
+    await store.appendAudit({
+      ts: new Date().toISOString(),
+      actor: actor.id,
+      action: 'delete_user',
+      result: 'ok',
+      detail: `${target.id} (${target.role})`,
+    })
+    return { ok: true }
   })
 
   // ---- self: change password ---------------------------------------------------

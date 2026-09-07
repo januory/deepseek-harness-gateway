@@ -90,6 +90,17 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ id, password, role }),
     }),
+  /** Edit a user: change role and/or reset password (partial). */
+  updateUser: (id: string, patch: { role?: Role; password?: string }) =>
+    req<{ ok: boolean; user: UserView }>('/gw/users/' + id, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+  deleteUser: (id: string) =>
+    req<{ ok: boolean }>('/gw/users/' + id, {
+      method: 'DELETE',
+      body: JSON.stringify({}),
+    }),
 
   // ---- machines ---------------------------------------------------------------
   machines: () => req<{ machines: MachineView[] }>('/gw/machines'),

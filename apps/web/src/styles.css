@@ -1162,6 +1162,11 @@ h3 {
   display: none;
 }
 
+/* user cards are the mobile alternative to the users table (≤1024px) */
+.users-cards {
+  display: none;
+}
+
 /* ---- responsive / mobile ------------------------------------------------------- */
 
 @media (max-width: 1024px) {
@@ -1514,6 +1519,66 @@ h3 {
   }
 
   .assignment-card__actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  /* users: switch from the 3-column table to stacked cards */
+  .users-table {
+    display: none;
+  }
+
+  .users-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .user-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+  }
+
+  .user-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .user-card__title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .user-card__title strong {
+    font-size: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .user-card__self {
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .user-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .user-card__actions .btn {
     flex: 1 1 auto;
     justify-content: center;
   }
