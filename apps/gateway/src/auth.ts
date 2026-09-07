@@ -272,6 +272,22 @@ export function buildAuth(store: IStore): Auth {
       const ip = req.ip
       const allowed = await throttle.check(ip, id)
       if (!allowed.ok) {
+        // Forensics for lockout/rate-limit scenarios: credential failures are
+        // audited below, but a throttled attempt is rejected here before any
+        // credential check — without this event a lockout leaves no trace in
+        // the audit log (audit follow-up on persistent lockout).
+        await store.appendAudit({
+          ts: new Date().toISOString(),
+          actor: id,
+          action: 'login_throttled',
+          result: 'denied',
+          detail: JSON.stringify({
+            ip,
+            reason: allowed.reason,
+            retryAfterSec: allowed.retryAfterSec,
+            ua: String(req.headers['user-agent'] ?? '').slice(0, 120),
+          }),
+        })
         return reply
           .code(429)
           .header('Retry-After', String(allowed.retryAfterSec))

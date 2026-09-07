@@ -46,7 +46,14 @@ export interface LoginThrottlePersistence {
   deleteIp(ip: string): Promise<void>
 }
 
-export type ThrottleCheck = { ok: true } | { ok: false; retryAfterSec: number }
+/**
+ * Result of a throttle check. On a block, `reason` says which dimension
+ * rejected the attempt so the caller can audit precisely: `'ip'` = per-IP
+ * volume cap, `'account'` = per-account failure lockout (escalating backoff).
+ */
+export type ThrottleCheck =
+  | { ok: true }
+  | { ok: false; retryAfterSec: number; reason: 'ip' | 'account' }
 
 export class LoginThrottle {
   private readonly accounts = new Map<string, AccountState>()
@@ -86,14 +93,14 @@ export class LoginThrottle {
       ipState.attempts = ipState.attempts.filter((t) => now - t < this.cfg.ipWindowMs)
       if (ipState.attempts.length >= this.cfg.ipMax) {
         const retryMs = ipState.attempts[0] + this.cfg.ipWindowMs - now
-        return { ok: false, retryAfterSec: Math.max(1, Math.ceil(retryMs / 1000)) }
+        return { ok: false, retryAfterSec: Math.max(1, Math.ceil(retryMs / 1000)), reason: 'ip' }
       }
     }
 
     const acc = this.accounts.get(account)
     if (acc) {
       if (acc.lockUntil > now) {
-        return { ok: false, retryAfterSec: Math.max(1, Math.ceil((acc.lockUntil - now) / 1000)) }
+        return { ok: false, retryAfterSec: Math.max(1, Math.ceil((acc.lockUntil - now) / 1000)), reason: 'account' }
       }
       acc.fails = acc.fails.filter((t) => now - t < this.cfg.accountWindowMs)
       if (acc.fails.length >= this.cfg.accountMax) {
@@ -104,7 +111,7 @@ export class LoginThrottle {
         if (this.persist) {
           await this.persist.saveAccount(account, { fails: acc.fails, lockUntil: acc.lockUntil, lockCount: acc.lockCount })
         }
-        return { ok: false, retryAfterSec: Math.max(1, Math.ceil(backoff / 1000)) }
+        return { ok: false, retryAfterSec: Math.max(1, Math.ceil(backoff / 1000)), reason: 'account' }
       }
     }
 

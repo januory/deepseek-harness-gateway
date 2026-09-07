@@ -68,7 +68,10 @@ describe('LoginThrottle', () => {
     }
     const blocked = await t.check('1.1.1.1', 'admin')
     expect(blocked.ok).toBe(false)
-    if (!blocked.ok) expect(blocked.retryAfterSec).toBe(180)
+    if (!blocked.ok) {
+      expect(blocked.retryAfterSec).toBe(180)
+      expect(blocked.reason).toBe('account')
+    }
   })
 
   it('keeps denying during the lockout and releases after it', async () => {
@@ -77,7 +80,9 @@ describe('LoginThrottle', () => {
     for (let i = 0; i < 5; i++) await t.recordFailure('ip', 'admin')
     expect((await t.check('ip', 'admin')).ok).toBe(false)
     clock.advance(2 * MIN) // still inside the 3-minute lock
-    expect((await t.check('ip', 'admin')).ok).toBe(false)
+    const still = await t.check('ip', 'admin')
+    expect(still.ok).toBe(false)
+    if (!still.ok) expect(still.reason).toBe('account')
     clock.advance(2 * MIN) // 4 minutes total — past the lock
     expect((await t.check('ip', 'admin')).ok).toBe(true)
   })
@@ -121,7 +126,9 @@ describe('LoginThrottle', () => {
       expect((await t.check('1.2.3.4', `user${i}`)).ok).toBe(true)
       await t.recordFailure('1.2.3.4', `user${i}`)
     }
-    expect((await t.check('1.2.3.4', 'another')).ok).toBe(false)
+    const blocked = await t.check('1.2.3.4', 'another')
+    expect(blocked.ok).toBe(false)
+    if (!blocked.ok) expect(blocked.reason).toBe('ip')
   })
 
   it('prune drops expired account and IP state', async () => {
