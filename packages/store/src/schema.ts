@@ -6,7 +6,7 @@
 // ADR-0007 §3/§4. The console seat was removed: assignment is the permission,
 // so there is no `seats` table.
 
-import { sqliteTable, text, integer, primaryKey } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, primaryKey, index } from 'drizzle-orm/sqlite-core'
 
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
@@ -46,15 +46,20 @@ export const pairingCodes = sqliteTable('pairing_codes', {
   consumedBy: text('consumed_by'),
 })
 
-export const auditEvents = sqliteTable('audit_events', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  ts: text('ts').notNull(),
-  actor: text('actor').notNull(),
-  machineId: text('machine_id'),
-  action: text('action').notNull(),
-  result: text('result').notNull(), // ok | denied | error
-  detail: text('detail'),
-})
+export const auditEvents = sqliteTable(
+  'audit_events',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    ts: text('ts').notNull(),
+    actor: text('actor').notNull(),
+    machineId: text('machine_id'),
+    action: text('action').notNull(),
+    result: text('result').notNull(), // ok | denied | error
+    detail: text('detail'),
+  },
+  // Retention/cleanup and time-range queries (ADR-0012) both scan by `ts`.
+  (t) => [index('audit_events_ts_idx').on(t.ts)],
+)
 
 // Persistent login throttling (persistent lockout). Row per account / per IP;
 // `fails` and `attempts` hold epoch-ms arrays serialized as JSON text.

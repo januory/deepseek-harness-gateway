@@ -1,0 +1,1 @@
+CREATE INDEX `audit_events_ts_idx` ON `audit_events` (`ts`);
