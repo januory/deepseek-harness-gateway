@@ -38,7 +38,31 @@
   --dsh-interactive-hover: rgba(38, 49, 72, 0.06);
   --dsh-accent: #4176e6;
   --dsh-accent-weak: #e4edfd;
+  --dsh-surface: #ffffff;   /* console bar / floating pill surface */
+  --dsh-frame: #ffffff;     /* console iframe mount bg (matches dsh bg-base) */
   --dsh-radius: 8px;
+}
+
+/* DSH light/dark shared: mirror the dsh web dark palette so the portal chrome
+   (the left rail + in-portal console) follows the same theme the console uses.
+   dsh resolves its default 'system' preference from prefers-color-scheme, so we
+   key the same signal. Content data-pages keep their light design; only the
+   chrome that sits beside the embedded console flips. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --dsh-bg: #1b1b1c;                  /* bluish-900  (sidebar fill) */
+    --dsh-bg-raised: #2c2c2e;           /* bluish-850  (nav hover) */
+    --dsh-bg-active: #43454a;           /* bluish-750  (nav active) */
+    --dsh-ink: #f9fafb;                 /* bluish-50   (label-primary) */
+    --dsh-ink-secondary: #cfd3d6;       /* bluish-300  (label-secondary) */
+    --dsh-ink-tertiary: #adb2b8;        /* bluish-400  (label-tertiary) */
+    --dsh-border: rgba(255, 255, 255, 0.16); /* border-l3 */
+    --dsh-interactive-hover: rgba(255, 255, 255, 0.08);
+    --dsh-accent: #5686fe;              /* deepseek-450 */
+    --dsh-accent-weak: #353638;         /* bluish-800  (active accent) */
+    --dsh-surface: #232324;             /* bluish-875  (console bar) */
+    --dsh-frame: #151517;               /* bluish-950 (dsh bg-base) */
+  }
 }
 
 * {
@@ -896,8 +920,9 @@ h3 {
 .console__bar {
   display: grid;
   grid-template-rows: 1fr;
-  background: #fff;
-  border-bottom: 1px solid var(--border);
+  background: var(--dsh-surface);
+  border-bottom: 1px solid var(--dsh-border);
+  color: var(--dsh-ink);
   flex: 0 0 auto;
   overflow: hidden;
   transition: grid-template-rows 0.28s ease, border-bottom-width 0.28s ease;
@@ -943,6 +968,21 @@ h3 {
   white-space: nowrap;
 }
 
+/* Console chrome rides the dsh ink tokens so the status bar and its controls
+   stay legible in both the light and dark console themes. */
+.console__title .muted {
+  color: var(--dsh-ink-tertiary);
+}
+
+.console .btn--ghost {
+  color: var(--dsh-ink-tertiary);
+}
+
+.console .btn--ghost:hover {
+  background: var(--dsh-bg-raised);
+  color: var(--dsh-ink);
+}
+
 .console__actions {
   display: flex;
   gap: 8px;
@@ -963,9 +1003,9 @@ h3 {
   max-width: min(72%, 320px);
   padding: 5px 12px;
   border-radius: 999px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.95);
-  color: var(--muted);
+  border: 1px solid var(--dsh-border);
+  background: var(--dsh-surface);
+  color: var(--dsh-ink-tertiary);
   font-size: 12.5px;
   font-family: inherit;
   cursor: pointer;
@@ -977,8 +1017,8 @@ h3 {
 }
 
 .console__expander:hover {
-  background: #fff;
-  color: var(--text);
+  background: var(--dsh-bg-raised);
+  color: var(--dsh-ink);
 }
 
 .console__expander svg {
@@ -1006,7 +1046,7 @@ h3 {
   flex: 1;
   width: 100%;
   border: none;
-  background: #fff;
+  background: var(--dsh-frame);
 }
 
 /* machines: search/filter toolbar */
@@ -1145,7 +1185,7 @@ h3 {
     z-index: 50;
     width: 38px;
     height: 38px;
-    background: var(--surface);
+    background: var(--dsh-surface);
     border: 1px solid var(--dsh-border);
     border-radius: var(--dsh-radius);
     color: var(--dsh-ink);
