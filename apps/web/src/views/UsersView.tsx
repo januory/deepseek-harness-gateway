@@ -56,13 +56,22 @@ export function UsersView({ me }: { me: PublicUser }) {
       <Card title="新建用户">
         <div className="form-grid">
           <Field label="账号">
-            <input className="input" placeholder="账号" value={id} onChange={(e) => setId(e.target.value)} />
+            <input
+              className="input"
+              placeholder="账号"
+              name="newUserAccount"
+              autoComplete="off"
+              value={id}
+              onChange={(e) => setId(e.target.value)}
+            />
           </Field>
           <Field label="密码">
             <input
               className="input"
               type="password"
               placeholder="密码"
+              name="newUserPassword"
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
