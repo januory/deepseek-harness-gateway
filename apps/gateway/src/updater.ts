@@ -27,7 +27,7 @@ import type { Auth } from './auth.js'
 const SEP = '\u001f' // unit separator — safe delimiter for git --format
 const LOG_FORMAT = ['%H', '%h', '%an', '%ad', '%s'].join(SEP)
 
-// Package version of the gateway server (e.g. "0.2.2"), read from its own
+// Package version of the gateway server (e.g. "0.1.0"), read from its own
 // package.json. Resolved relative to this module so both dev (src/updater.ts)
 // and the bundled CLI (dist/cli.js) land on apps/gateway/package.json.
 let PACKAGE_VERSION = '0.0.0'
@@ -260,7 +260,7 @@ export async function registerUpdater(app: FastifyInstance, auth: Auth, store: I
   const { requireRole } = auth
   const log: GitLog = app.log
 
-  // Package version of the running gateway server (e.g. "0.2.2"), for the
+  // Package version of the running gateway server (e.g. "0.1.0"), for the
   // portal's version badge. Any authenticated user may read it (the git/branch
   // detail below stays admin-only).
   app.get('/gw/app-version', { preHandler: requireRole() }, async () => ({ version: PACKAGE_VERSION }))
