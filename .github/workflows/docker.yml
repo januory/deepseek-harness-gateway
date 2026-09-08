@@ -1,7 +1,8 @@
 # build-docker —— 每次 push 到 main 时只发布分支标签（:main），不发布 commit-hash / latest / v* 标签。
 # latest + v<version> 镜像由 release-dsh-gateway-server 手动发布流程同步发布（latest + v<version> + commit hash）。
-# 构建关闭 SLSA provenance（避免 GHCR 产生 untagged attestation version），push 后用
-# delete-package-versions 清掉被 :main 顶掉的 untagged 旧 digest，使仓库只保留当前镜像。
+# 构建关闭 SLSA provenance（避免 GHCR 产生 untagged attestation version）。push 前记录当前
+# :main 指向的 version，push 后精确删除它（已被顶成 untagged）；release 流程保留 provenance，
+# 其 attestation（同样以 untagged version 存在）不会被误删。
 name: build-docker
 
 on:
@@ -41,6 +42,20 @@ jobs:
           tags: |
             type=ref,event=branch
 
+      # push 前记录当前 :main 指向的 version id —— 本次 push 会把它顶成 untagged。
+      # 端点与官方 actions/delete-package-versions 源码一致（/users/{owner}/packages/...），
+      # GITHUB_TOKEN 因本 workflow 发布该包而持有 admin 权限。
+      - name: Record current :main version id
+        id: prev-main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh api --paginate \
+            "/users/${{ github.repository_owner }}/packages/container/${{ github.event.repository.name }}/versions?per_page=100" \
+            --jq '[.[] | select(.metadata.container.tags | index("main")) | .id] | first // empty')
+          echo "prev_id=$id" >> "$GITHUB_OUTPUT"
+          echo "current :main version id: ${id:-none}"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -54,14 +69,20 @@ jobs:
           # 不带标签的独立 version（untagged），每次 push 多出 ~2 个垃圾镜像。
           provenance: false
 
-      # 删除刚被 :main 顶掉、已无标签（untagged）的旧镜像。
-      # GHCR 的 tag 只是指针：新 push 把 :main 指向新 digest 后，上一个 digest
-      # 不会自动回收，只会变成 untagged 的裸 version 永远躺着——这里每次 push 后清一次。
-      - name: Delete untagged versions
-        uses: actions/delete-package-versions@v5
-        with:
-          owner: ${{ github.repository_owner }}
-          package-name: ${{ github.event.repository.name }}
-          package-type: container
-          delete-only-untagged-versions: 'true'
-          min-versions-to-keep: 0
+      # push 成功后：刚被 :main 顶掉的旧 digest 已变成 untagged，精确删除它（该步仅在
+      # push 成功后运行；删除前再校验一次它确已无标签，防止误删仍被引用的镜像）。
+      # 不删其它 untagged —— release 流程（保留 provenance）产生的 attestation 得以保留。
+      - name: Delete superseded :main version
+        if: steps.prev-main.outputs.prev_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id="${{ steps.prev-main.outputs.prev_id }}"
+          base="/users/${{ github.repository_owner }}/packages/container/${{ github.event.repository.name }}"
+          tags=$(gh api "$base/versions/$id" --jq '.metadata.container.tags | join(",")')
+          if [ -n "$tags" ]; then
+            echo "version $id still tagged [$tags]; push did not supersede it, skip deletion"
+            exit 0
+          fi
+          echo "deleting superseded version $id (now untagged)"
+          gh api --method DELETE "$base/versions/$id" >/dev/null && echo "deleted $id"
