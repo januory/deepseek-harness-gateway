@@ -1,5 +1,7 @@
-# build-docker —— 每次 push 到 main 时发布 commit-hash 镜像 + 分支标签（:main）。不发布 latest / v* 标签。
+# build-docker —— 每次 push 到 main 时只发布分支标签（:main），不发布 commit-hash / latest / v* 标签。
 # latest + v<version> 镜像由 release-dsh-gateway-server 手动发布流程同步发布（latest + v<version> + commit hash）。
+# 构建关闭 SLSA provenance（避免 GHCR 产生 untagged attestation version），push 后用
+# delete-package-versions 清掉被 :main 顶掉的 untagged 旧 digest，使仓库只保留当前镜像。
 name: build-docker
 
 on:
@@ -38,7 +40,6 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
-            type=sha,prefix=,format=short
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -49,3 +50,18 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # 关闭 buildx 默认的 SLSA provenance：否则 GHCR 会把 attestation 清单记为
+          # 不带标签的独立 version（untagged），每次 push 多出 ~2 个垃圾镜像。
+          provenance: false
+
+      # 删除刚被 :main 顶掉、已无标签（untagged）的旧镜像。
+      # GHCR 的 tag 只是指针：新 push 把 :main 指向新 digest 后，上一个 digest
+      # 不会自动回收，只会变成 untagged 的裸 version 永远躺着——这里每次 push 后清一次。
+      - name: Delete untagged versions
+        uses: actions/delete-package-versions@v5
+        with:
+          owner: ${{ github.repository_owner }}
+          package-name: ${{ github.event.repository.name }}
+          package-type: container
+          delete-only-untagged-versions: 'true'
+          min-versions-to-keep: 0
