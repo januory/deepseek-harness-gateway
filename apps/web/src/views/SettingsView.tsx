@@ -295,28 +295,46 @@ export function SettingsView({ me }: { me: PublicUser }) {
                 {check.incoming.length === 0 ? (
                   <Empty>无法列出待更新提交</Empty>
                 ) : (
-                  <div className="card__body card__body--flush" style={{ margin: '0 -18px -18px' }}>
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th>提交</th>
-                          <th>说明</th>
-                          <th>作者</th>
-                          <th>日期</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {check.incoming.map((c) => (
-                          <tr key={c.hash}>
-                            <td className="mono">{c.short}</td>
-                            <td style={{ fontWeight: 600 }}>{c.subject}</td>
-                            <td className="muted">{c.author}</td>
-                            <td className="muted">{c.date}</td>
+                  <>
+                    {/* Desktop: table */}
+                    <div className="card__body card__body--flush commits-table" style={{ margin: '0 -18px -18px' }}>
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th>提交</th>
+                            <th>说明</th>
+                            <th>作者</th>
+                            <th>日期</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {check.incoming.map((c) => (
+                            <tr key={c.hash}>
+                              <td className="mono">{c.short}</td>
+                              <td style={{ fontWeight: 600 }}>{c.subject}</td>
+                              <td className="muted">{c.author}</td>
+                              <td className="muted">{c.date}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Mobile: one stacked card per incoming commit (mirrors
+                        machines/assignments/audit/users cards). */}
+                    <div className="commit-cards">
+                      {check.incoming.map((c) => (
+                        <div className="commit-card" key={c.hash}>
+                          <div className="commit-card__head">
+                            <span className="mono">{c.short}</span>
+                            <span className="muted">{c.date}</span>
+                          </div>
+                          <div className="commit-card__subject">{c.subject}</div>
+                          <div className="commit-card__author muted">{c.author}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
 
                 {reloading ? (

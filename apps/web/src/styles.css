@@ -1218,6 +1218,11 @@ h3 {
   display: none;
 }
 
+/* commit cards are the mobile alternative to the incoming-commits table (≤1024px) */
+.commit-cards {
+  display: none;
+}
+
 /* ---- responsive / mobile ------------------------------------------------------- */
 
 @media (max-width: 1024px) {
@@ -1645,6 +1650,56 @@ h3 {
   .user-card__actions .btn {
     flex: 1 1 auto;
     justify-content: center;
+  }
+
+  /* update: switch from the 4-column incoming-commits table to stacked cards */
+  .commits-table {
+    display: none;
+  }
+
+  .commit-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .commit-card {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+  }
+
+  .commit-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .commit-card__head .mono {
+    font-size: 12.5px;
+    background: var(--surface-2);
+    border-radius: 6px;
+    padding: 2px 7px;
+  }
+
+  .commit-card__head .muted {
+    font-size: 12.5px;
+  }
+
+  .commit-card__subject {
+    font-size: 14px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .commit-card__author {
+    font-size: 13px;
   }
 }
 
