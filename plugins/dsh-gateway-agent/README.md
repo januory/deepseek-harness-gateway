@@ -43,6 +43,6 @@ Values entered in the **网关接入** UI are saved here; the plugin auto-connec
 
 ## How it works
 
-The plugin runs as a dsh host plugin (Node) plus a small settings card in the browser client. On the host side it dials `gatewayUrl`, completes a pairing-code + HMAC challenge-response, then relays browser requests and WebSocket streams from the gateway to the machine's loopback dsh web (`127.0.0.1:<dshPort>`), injecting an operator cookie minted in-process via the dsh Connection service.
+The plugin runs as a dsh host plugin (Node) plus a small settings card in the browser client. On the host side it dials `gatewayUrl`, completes a pairing-code + HMAC challenge-response, then relays browser requests and WebSocket streams from the gateway to the machine's loopback dsh web (`127.0.0.1:<dshPort>`), injecting an operator cookie minted in-process via the dsh Connection service. Each relayed request is re-declared as one consistent same-origin loopback request: besides rewriting `Host`, the agent sets `Origin` (and any `Referer`) to `http://127.0.0.1:<dshPort>`, so third-party handlers that require `Origin === Host` — such as the plugin market's POST routes — work over the tunnel too.
 
 See the [project README](../../README.md) for the full architecture.

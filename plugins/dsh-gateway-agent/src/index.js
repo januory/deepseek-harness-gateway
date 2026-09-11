@@ -24,13 +24,14 @@ import {
 } from './protocol.js'
 import { configDir, createConfigStore, sanitizeConfig, CLIENT_FIELDS } from './config.js'
 import { nextBackoff, backoffDelay } from './backoff.js'
+import { loopbackSameOriginHeaders } from './origin.js'
 
 export const name = 'dsh-gateway-agent'
 
 const PACKAGE = '@januory/dsh-gateway-agent'
 const NAMESPACE = 'gatewayAgent'
 // Keep in sync with package.json "version".
-const AGENT_VERSION = '0.1.3'
+const AGENT_VERSION = '0.1.4'
 
 // Verbose per-request relay logging (recv / forward / upstream) is opt-in via
 // DSH_AGENT_DEBUG=1; normal operation stays quiet.
@@ -347,7 +348,11 @@ class Connection {
 
   forwardUpstream(ws, channel, method, path, headers, body, retried) {
     if (DEBUG) console.log('[dsh-gateway-agent] forward', method, path, 'dshPort=', this.dshPort)
-    const reqHeaders = { ...(headers || {}), host: `127.0.0.1:${this.dshPort}` }
+    // One consistent loopback same-origin request: Host *and* the browser
+    // markers the gateway stripped are re-declared for 127.0.0.1:<dshPort>, so
+    // third-party same-origin handlers (e.g. dshmarket's POST routes) accept
+    // the relayed request too (origin.js).
+    const reqHeaders = loopbackSameOriginHeaders(headers, this.dshPort)
     const cookie = this.effectiveCookie()
     if (cookie) reqHeaders.cookie = cookie
 

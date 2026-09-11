@@ -22,7 +22,10 @@ const DROP_HEADERS = new Set([
   // rejects requests whose Origin/Referer/sec-fetch markers don't match its own
   // authority (the agent rewrites Host to 127.0.0.1:<port>, but the browser's
   // Origin still names the gateway). Strip them so the relayed request reads as
-  // a clean same-origin loopback request.
+  // a clean same-origin loopback request. The agent re-declares a matching
+  // loopback Origin/Referer alongside the rewritten Host
+  // (plugins/dsh-gateway-agent/src/origin.js), so third-party handlers that
+  // require Origin === Host — e.g. the plugin market's POST routes — still work.
   'origin',
   'referer',
   'sec-fetch-site',
