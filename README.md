@@ -16,6 +16,7 @@ Each customer machine runs a small plugin (`dsh-gateway-agent`) inside its own d
 - **Gateway-held identity & authorization** — machine identity is issued by the gateway, and all authorization is enforced at the gateway rather than on the customer machine.
 - **Zero-change data plane** — the gateway relays the official dsh web UI (HTTP + WebSocket) untouched; no fork of dsh is required.
 - **Full control from the portal** — operators drive the assigned machine's dsh WebUI from the gateway portal.
+- **Remote dsh lifecycle (opt-in)** — a machine can run a standalone supervisor process, so the portal's machine catalog can start / stop / restart that machine's dsh remotely.
 
 ## How it works
 
@@ -143,4 +144,5 @@ apps/web/                     # portal front end (Vite + React)
 packages/protocol/            # shared wire protocol (plain JS, zero build)
 packages/store/               # persistence seam (IStore) + domain types
 plugins/dsh-gateway-agent/    # customer-machine access plugin (outbound wss bridge to local dsh web)
+plugins/dsh-gateway-agent/service/  # lifecycle-supervisor service samples (systemd/launchd/Windows task)
 ```

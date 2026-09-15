@@ -1,0 +1,55 @@
+# dsh-gateway-agent — systemd user unit for the dsh LIFECYCLE SUPERVISOR.
+#
+# What this supervises is the SUPERVISOR (daemon.js), not dsh itself: the
+# supervisor is the process that starts/stops/restarts dsh when the gateway
+# portal asks it to. Running dsh under systemd *while* the supervisor also owns
+# it would fight over the process, so pick one owner — the supervisor.
+#
+# Install (user scope, no root needed):
+#   1. Resolve the supervisor entry installed with the plugin:
+#        node -e "console.log(require.resolve('@januory/dsh-gateway-agent/src/daemon.js'))"
+#      Replace <SUPERVISOR_ENTRY> below with that path (quote it).
+#   2. mkdir -p ~/.config/systemd/user
+#      cp dsh-gateway-supervisor.service ~/.config/systemd/user/
+#   3. systemctl --user daemon-reload
+#      systemctl --user enable --now dsh-gateway-supervisor.service
+#   4. systemctl --user status dsh-gateway-supervisor.service
+#
+# `systemctl --user enable` keeps it running across logins; for a headless box
+# also run: loginctl enable-linger "$USER".
+#
+# NOTE: this unit deliberately does NOT use Restart=always for dsh — dsh is a
+# child of the supervisor. The supervisor's own auto-revive setting (off by
+# default, because "关闭" must mean stopped) decides whether a crashed dsh is
+# brought back.
+
+[Unit]
+Description=dsh gateway lifecycle supervisor (dsh-gateway-agent)
+Documentation=https://github.com/januory/deepseek-harness-gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h
+# Point DSH_HOME at the same home the plugin/dsh uses, so the supervisor reads
+# the config you edited in the dsh settings card. Omit it to default to ~/.dsh.
+Environment=DSH_HOME=%h/.dsh
+ExecStart=/usr/bin/env node <SUPERVISOR_ENTRY>
+Restart=always
+RestartSec=3
+# The supervisor logs to stdout when no logFile is configured, so this is the
+# durable record; `journalctl --user -u dsh-gateway-supervisor -f` to watch.
+StandardOutput=journal
+StandardError=journal
+
+# Hardening: the supervisor only needs its own config dir and the process tree
+# it manages. Relax NoNewPrivileges only if your start script needs sudo.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=%h/.dsh
+
+[Install]
+WantedBy=default.target

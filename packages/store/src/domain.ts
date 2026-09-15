@@ -21,6 +21,14 @@ export interface Machine {
   configRev: number
   lastHeartbeatAt?: string
   createdAt: string
+  /**
+   * Last daemon state reported by the machine's supervisor (DaemonState:
+   * unknown|starting|running|stopped|exited). Persisted so the portal can still
+   * label a machine whose supervisor is offline, or after a gateway restart.
+   */
+  daemonState?: string
+  /** Whether daemon supervision is switched on in the machine's own config. */
+  daemonEnabled?: boolean
 }
 
 export interface Assignment {

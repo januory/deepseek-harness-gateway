@@ -46,3 +46,19 @@ dsh plugin --profile web add ./plugins/dsh-gateway-agent
 插件由 dsh host 面（Node）与浏览器客户端里的一张设置卡共同组成。host 面拨号 `gatewayUrl`，完成配对码 + HMAC 挑战应答，随后把来自网关的浏览器请求与 WebSocket 流中继到本机 loopback dsh web（`127.0.0.1:<dshPort>`），并注入经 dsh Connection 服务在进程内签发的操作员 cookie。每条中继请求都会被重建为**一致的同源 loopback 请求**：除重写 `Host` 外，agent 还把 `Origin`（以及 `Referer`）声明为 `http://127.0.0.1:<dshPort>`，因此**要求 `Origin === Host` 的第三方插件路由**（例如插件市场的 POST 接口）在网关隧道下同样可用。
 
 完整架构见[项目 README](../../README.md)。
+
+## 守护进程服务（可选，默认关闭）
+
+勾选 **设置 → 网关接入 → 守护进程服务** 后，本机由独立的 supervisor 进程托管 dsh 的
+启动 / 停止 / 重启，网关门户的「机器目录」即可远程操作该机器。
+
+- 插件本身跑在 dsh 里，**无法**重启 dsh——所以这一步需要把 supervisor 服务化常驻。
+  现成样例见 [`service/`](service/README.md)（systemd / launchd / Windows 计划任务）。
+- 设置卡会把 supervisor 的确切启动命令显示出来，供你直接做成系统服务。
+- 设置卡里展示并可修改的四条命令（启动 / 停止 / 重启 / 状态探测）就是网关将会执行的
+  全部内容；**关闭默认就等于关闭**（`autoRevive` 默认 `false`），需要 dsh 崩溃自动拉起
+  才勾选它。
+- 相关配置存放在 `$DSH_HOME/dsh-gateway-agent/daemon.json`；supervisor 的运行时状态写在
+  同目录 `daemon-state.json`，设置卡据此显示状态。
+
+若不需要远程启停 dsh，保持不勾选即可，其余功能不受影响。

@@ -49,6 +49,8 @@ function machineRow(m: Machine) {
     configRev: m.configRev,
     lastHeartbeatAt: m.lastHeartbeatAt ?? null,
     createdAt: m.createdAt,
+    daemonState: m.daemonState ?? null,
+    daemonEnabled: m.daemonEnabled ?? false,
   }
 }
 
@@ -62,6 +64,8 @@ function machineFromRow(r: typeof schema.machines.$inferSelect): Machine {
     configRev: r.configRev,
     lastHeartbeatAt: r.lastHeartbeatAt ?? undefined,
     createdAt: r.createdAt,
+    daemonState: r.daemonState ?? undefined,
+    daemonEnabled: r.daemonEnabled ?? undefined,
   }
 }
 
@@ -136,6 +140,8 @@ export class SqliteStore implements IStore {
           configRev: row.configRev,
           lastHeartbeatAt: row.lastHeartbeatAt,
           createdAt: row.createdAt,
+          daemonState: row.daemonState,
+          daemonEnabled: row.daemonEnabled,
         },
       })
   }

@@ -16,14 +16,20 @@ import {
   PROTOCOL_VERSION,
   HEARTBEAT_INTERVAL_MS,
   LEASE_TTL_MS,
+  DAEMON_CONTROL_TIMEOUT_MS,
   DataKind,
   DataType,
+  DaemonType,
+  NodeRole,
+  normalizeDaemonState,
+  normalizeRole,
   challenge,
   encodeFrame,
   encodeBinaryFrame,
   BinaryFrameParser,
 } from 'dsh-gateway-protocol'
 import type { IStore, MachineStatus } from 'dsh-gateway-store'
+import { DaemonControlRegistry } from './daemon-control.js'
 
 function sha256Hex(s: string): string {
   return createHash('sha256').update(s).digest('hex')
@@ -32,9 +38,23 @@ function sha256Hex(s: string): string {
 interface ConnectedNode {
   ws: WebSocketT
   machineId: string
+  role: string
   status: MachineStatus
   leaseExpiry: number
   parser: BinaryFrameParser
+  /** Last daemon state the supervisor reported (DaemonState); console nodes keep ''. */
+  daemonState: string
+  /** Whether the machine has daemon supervision enabled in its own config. */
+  daemonEnabled: boolean
+}
+
+/**
+ * A machine can hold two sockets at once: the `console` plugin (data plane) and
+ * the standalone `supervisor` (dsh lifecycle). Keying the live map by
+ * machineId+role keeps both, so stopping dsh does not detach the supervisor.
+ */
+function nodeKey(machineId: string, role: string): string {
+  return `${machineId}:${role}`
 }
 
 export interface RelayRequest {
@@ -71,6 +91,11 @@ const WS_DROP_HEADERS = new Set(['host', 'connection', 'upgrade', 'origin', 'sec
 
 export class NodeRegistry {
   private nodes = new Map<string, ConnectedNode>()
+  private daemonControls = new DaemonControlRegistry({
+    timeoutMs: DAEMON_CONTROL_TIMEOUT_MS,
+    onTimeout: (id, action) =>
+      console.log(`[gateway] daemon control timed out id=${id} action=${action} at=${new Date().toISOString()}`),
+  })
   private streams = new Map<number, RelayStreamState>()
   private streamsNode = new Map<number, string>()
   private wsChannels = new Map<number, WsChannelHandler>()
@@ -111,6 +136,7 @@ export class NodeRegistry {
     if (this.timer) clearInterval(this.timer)
     for (const node of this.nodes.values()) node.ws.close(4000, 'shutdown')
     this.nodes.clear()
+    this.daemonControls.failAll('gateway shutting down')
     for (const s of this.streams.values()) {
       s.clear()
       s.handlers.onError(new Error('shutdown'))
@@ -126,20 +152,67 @@ export class NodeRegistry {
   }
 
   isConnected(machineId: string): boolean {
-    return this.nodes.has(machineId)
+    return this.nodes.has(nodeKey(machineId, NodeRole.CONSOLE)) || this.nodes.has(nodeKey(machineId, NodeRole.SUPERVISOR))
   }
 
-  /** Live nodes: machineId → { status }. */
-  listConnected(): Array<{ machineId: string; status: MachineStatus }> {
-    return [...this.nodes.values()].map((n) => ({ machineId: n.machineId, status: n.status }))
+  /** True when the data-plane plugin (inside dsh) holds a live socket. */
+  isConsoleConnected(machineId: string): boolean {
+    return this.nodes.has(nodeKey(machineId, NodeRole.CONSOLE))
+  }
+
+  /** True when the machine's lifecycle supervisor holds a live socket. */
+  isSupervisorConnected(machineId: string): boolean {
+    return this.nodes.has(nodeKey(machineId, NodeRole.SUPERVISOR))
+  }
+
+  /** The live console socket for a machine (data plane relay target), if any. */
+  private consoleNode(machineId: string): ConnectedNode | undefined {
+    return this.nodes.get(nodeKey(machineId, NodeRole.CONSOLE))
+  }
+
+  private supervisorNode(machineId: string): ConnectedNode | undefined {
+    return this.nodes.get(nodeKey(machineId, NodeRole.SUPERVISOR))
+  }
+
+  /**
+   * Live daemon picture for the portal. `connected` reflects the supervisor
+   * socket; `state` is what the supervisor last reported (falling back to the
+   * persisted value when no supervisor is connected).
+   */
+  daemonStatus(machineId: string): { connected: boolean; enabled: boolean; state: string } {
+    const node = this.supervisorNode(machineId)
+    if (!node) return { connected: false, enabled: false, state: '' }
+    return { connected: true, enabled: node.daemonEnabled, state: normalizeDaemonState(node.daemonState) }
+  }
+
+  /**
+   * Ask a machine's supervisor to start/stop/restart dsh. Rejects when the
+   * machine has no supervisor socket or the supervisor does not answer within
+   * the control timeout.
+   */
+  async controlDaemon(machineId: string, action: string): Promise<{ ok: boolean; state?: string; error?: string }> {
+    const node = this.supervisorNode(machineId)
+    if (!node) throw new Error('machine has no supervisor connected')
+    const { id, promise } = this.daemonControls.register(action)
+    try {
+      node.ws.send(JSON.stringify({ v: PROTOCOL_VERSION, type: DaemonType.DAEMON_CONTROL, payload: { id, action } }))
+    } catch (e) {
+      this.daemonControls.settle(id, { ok: false, error: String((e as Error).message ?? e) })
+    }
+    return promise
+  }
+
+  /** Live nodes: machineId → { status, role }. */
+  listConnected(): Array<{ machineId: string; status: MachineStatus; role: string }> {
+    return [...this.nodes.values()].map((n) => ({ machineId: n.machineId, status: n.status, role: n.role }))
   }
 
   /** List machines for the portal/admin (durable metadata). */
   async listNodes(): Promise<Array<{ machineId: string; name?: string; dshVersion?: string }>> {
     const out: Array<{ machineId: string; name?: string; dshVersion?: string }> = []
-    for (const id of this.nodes.keys()) {
-      const m = await this.store.getMachine(id)
-      out.push({ machineId: id, name: m?.name, dshVersion: m?.dshVersion })
+    for (const node of this.nodes.values()) {
+      const m = await this.store.getMachine(node.machineId)
+      out.push({ machineId: node.machineId, name: m?.name, dshVersion: m?.dshVersion })
     }
     return out
   }
@@ -150,8 +223,9 @@ export class NodeRegistry {
     if (!m) throw new Error('machine not found')
     if (m.status !== 'pending') throw new Error('machine is not pending')
     await this.store.upsertMachine({ ...m, status: 'approved' })
-    const node = this.nodes.get(machineId)
-    if (node) {
+    // Both sockets (console plugin + supervisor) must learn about the approval.
+    for (const node of this.nodes.values()) {
+      if (node.machineId !== machineId) continue
       node.status = 'approved'
       node.ws.send(
         JSON.stringify({ v: PROTOCOL_VERSION, type: 'registration_status', payload: { state: 'approved', machineId, leaseMs: LEASE_TTL_MS } }),
@@ -160,35 +234,37 @@ export class NodeRegistry {
     await this.store.appendAudit({ ts: new Date().toISOString(), actor: 'admin', machineId, action: 'approve_machine', result: 'ok' })
   }
 
-  /** Revoke a machine and drop its live connection. */
+  /** Revoke a machine and drop its live connections. */
   async revokeMachine(machineId: string): Promise<void> {
     const m = await this.store.getMachine(machineId)
     if (!m) throw new Error('machine not found')
     await this.store.upsertMachine({ ...m, status: 'revoked' })
-    const node = this.nodes.get(machineId)
-    if (node) {
+    for (const [key, node] of [...this.nodes]) {
+      if (node.machineId !== machineId) continue
       node.ws.close(4003, 'machine revoked')
-      this.nodes.delete(machineId)
+      this.nodes.delete(key)
     }
+    this.daemonControls.failAll('machine revoked')
     await this.store.appendAudit({ ts: new Date().toISOString(), actor: 'admin', machineId, action: 'revoke_machine', result: 'ok' })
   }
 
-  /** Delete a machine record entirely; drops its live connection if any. */
+  /** Delete a machine record entirely; drops its live connections if any. */
   async deleteMachine(machineId: string): Promise<void> {
     const m = await this.store.getMachine(machineId)
     if (!m) throw new Error('machine not found')
-    const node = this.nodes.get(machineId)
-    if (node) {
+    for (const [key, node] of [...this.nodes]) {
+      if (node.machineId !== machineId) continue
       node.ws.close(4000, 'machine deleted')
-      this.nodes.delete(machineId)
+      this.nodes.delete(key)
     }
+    this.daemonControls.failAll('machine deleted')
     await this.store.deleteMachine(machineId)
     await this.store.appendAudit({ ts: new Date().toISOString(), actor: 'admin', machineId, action: 'delete_machine', result: 'ok' })
   }
 
   /** Relay an HTTP request to a connected, approved node and stream the response. */
   relayStream(machineId: string, req: RelayRequest, handlers: RelayStreamHandlers): void {
-    const node = this.nodes.get(machineId)
+    const node = this.consoleNode(machineId)
     if (!node) {
       handlers.onError(new Error('node not connected'))
       return
@@ -236,20 +312,21 @@ export class NodeRegistry {
     arm()
   }
 
-  /** Machine id when exactly one APPROVED node is connected (single-node passthrough). */
+  /** Machine id when exactly one APPROVED console node is connected (single-node passthrough). */
   singleNodeId(): string | undefined {
     let found: string | undefined
-    for (const [id, node] of this.nodes) {
+    for (const node of this.nodes.values()) {
+      if (node.role !== NodeRole.CONSOLE) continue
       if (node.status !== 'approved') continue
       if (found !== undefined) return undefined
-      found = id
+      found = node.machineId
     }
     return found
   }
 
   /** Relay any browser WebSocket upgrade to a node at an arbitrary upstream path. */
   upgradeBrowserWs(req: IncomingMessage, socket: Duplex, head: Buffer, machineId: string, upstreamPath: string): void {
-    const node = this.nodes.get(machineId)
+    const node = this.consoleNode(machineId)
     if (!node || node.status !== 'approved') {
       socket.destroy()
       return
@@ -299,7 +376,7 @@ export class NodeRegistry {
   }
 
   private relayWsOpen(machineId: string, path: string, headers: Record<string, string>, handler: WsChannelHandler): number {
-    const node = this.nodes.get(machineId)
+    const node = this.consoleNode(machineId)
     if (!node || node.status !== 'approved') throw new Error('node not connected/approved')
     const channel = ++this.channelSeq
     this.wsChannels.set(channel, handler)
@@ -312,13 +389,13 @@ export class NodeRegistry {
 
   private sendWs(channel: number, kind: number, data: Buffer): void {
     const mid = this.wsChannelNode.get(channel)
-    const node = mid ? this.nodes.get(mid) : undefined
+    const node = mid ? this.consoleNode(mid) : undefined
     if (node) node.ws.send(encodeFrame(kind, channel, 0, data))
   }
 
   private closeWsChannel(channel: number): void {
     const mid = this.wsChannelNode.get(channel)
-    const node = mid ? this.nodes.get(mid) : undefined
+    const node = mid ? this.consoleNode(mid) : undefined
     if (node) {
       node.ws.send(JSON.stringify({ v: PROTOCOL_VERSION, type: DataType.RELAY_WS_CLOSE, payload: { channel } }))
     }
@@ -382,6 +459,7 @@ export class NodeRegistry {
 
     let authed = false
     let machineId = ''
+    let role: string = NodeRole.CONSOLE
     const parser = new BinaryFrameParser()
 
     ws.on('message', (raw, isBinary) => {
@@ -404,22 +482,50 @@ export class NodeRegistry {
 
       if (!authed) {
         this.handleOnboarding(ws, msg)
-          .then(({ machineId: id, state }) => {
+          .then(({ machineId: id, state, role: nodeRole }) => {
             machineId = id
+            role = nodeRole
             authed = true
-            this.nodes.set(id, { ws, machineId: id, status: state, leaseExpiry: Date.now() + LEASE_TTL_MS, parser })
-            console.log(`[gateway] node attached machineId=${id} state=${state} at=${new Date().toISOString()}`)
+            this.nodes.set(nodeKey(id, nodeRole), {
+              ws,
+              machineId: id,
+              role: nodeRole,
+              status: state,
+              leaseExpiry: Date.now() + LEASE_TTL_MS,
+              parser,
+              daemonState: '',
+              daemonEnabled: false,
+            })
+            console.log(
+              `[gateway] node attached machineId=${id} state=${state} role=${nodeRole} at=${new Date().toISOString()}`,
+            )
           })
           .catch((e) => console.log('[gateway] onboarding ERROR:', (e as Error).message ?? e))
         return
       }
 
       if (msg.type === 'heartbeat') {
-        const node = this.nodes.get(msg.payload?.machineId)
+        // Route by this socket's own identity, never by the payload's machineId:
+        // a machine can hold a console and a supervisor socket at the same time.
+        const node = this.nodes.get(nodeKey(machineId, role))
         if (!node) return ws.close(4004, 'unknown machine')
+        const payload = msg.payload ?? {}
         node.leaseExpiry = Date.now() + LEASE_TTL_MS
+        node.daemonState = normalizeDaemonState(payload.daemonState ?? payload.daemon?.state)
+        node.daemonEnabled = payload.daemonEnabled === true || payload.daemon?.enabled === true
         ws.send(JSON.stringify({ v: PROTOCOL_VERSION, type: 'lease', payload: { ttlMs: LEASE_TTL_MS } }))
-        this.recordHeartbeat(msg.payload).catch((e) => console.log('[gateway] heartbeat persist ERROR:', (e as Error).message ?? e))
+        this.recordHeartbeat(node, payload).catch((e) =>
+          console.log('[gateway] heartbeat persist ERROR:', (e as Error).message ?? e),
+        )
+        return
+      }
+
+      if (msg.type === DaemonType.DAEMON_RESULT) {
+        this.daemonControls.settle(msg.payload?.id, {
+          ok: msg.payload?.ok !== false,
+          state: typeof msg.payload?.state === 'string' ? msg.payload.state : undefined,
+          error: typeof msg.payload?.error === 'string' ? msg.payload.error : undefined,
+        })
         return
       }
 
@@ -459,11 +565,20 @@ export class NodeRegistry {
 
     ws.on('close', (code: number, reason: Buffer) => {
       if (machineId) {
-        this.nodes.delete(machineId)
+        const key = nodeKey(machineId, role)
+        // Only drop the entry if it still belongs to THIS socket: a reconnect
+        // may already have replaced it, and we must not evict the fresh one.
+        if (this.nodes.get(key)?.ws === ws) this.nodes.delete(key)
         this.dropChannelsForMachine(machineId)
+        if (role === NodeRole.SUPERVISOR) {
+          this.daemonControls.failAll('supervisor disconnected')
+          // Remember the last lifecycle intent so a portal rendered after the
+          // drop still shows "stopped" rather than falling back to unknown.
+          this.persistDaemonState(machineId).catch(() => {})
+        }
       }
       console.log(
-        `[gateway] node disconnected machineId=${machineId || '(unauthed)'} code=${code} reason=${reason.toString('utf8') || '-'} at=${new Date().toISOString()}`,
+        `[gateway] node disconnected machineId=${machineId || '(unauthed)'} role=${role} code=${code} reason=${reason.toString('utf8') || '-'} at=${new Date().toISOString()}`,
       )
     })
     ws.on('error', (e) => {
@@ -481,23 +596,49 @@ export class NodeRegistry {
     }
   }
 
-  /** Persist durable health metadata on each heartbeat (accurate "last seen" + version). */
-  private async recordHeartbeat(payload: { machineId?: string; dshVersion?: string }): Promise<void> {
-    if (!payload?.machineId) return
-    const m = await this.store.getMachine(payload.machineId)
+  /**
+   * Persist durable health metadata on each heartbeat (accurate "last seen" +
+   * version). The console socket owns dshVersion; the supervisor socket owns the
+   * daemon columns — neither may clobber the other's fields, so each heartbeat
+   * writes only what its own role is authoritative for.
+   */
+  private async recordHeartbeat(
+    node: ConnectedNode,
+    payload: { machineId?: string; dshVersion?: string; agentVersion?: string },
+  ): Promise<void> {
+    const m = await this.store.getMachine(node.machineId)
     if (!m) return
     const patch = { ...m, lastHeartbeatAt: new Date().toISOString() }
-    if (typeof payload.dshVersion === 'string' && payload.dshVersion) patch.dshVersion = payload.dshVersion
+    if (node.role === NodeRole.SUPERVISOR) {
+      patch.daemonState = node.daemonState
+      patch.daemonEnabled = node.daemonEnabled
+    } else if (typeof payload.dshVersion === 'string' && payload.dshVersion) {
+      patch.dshVersion = payload.dshVersion
+    }
     await this.store.upsertMachine(patch)
   }
 
-  /** Returns the authenticated machine id and its live status. */
+  /** Persist the supervisor's last known daemon state (used on disconnect). */
+  private async persistDaemonState(machineId: string): Promise<void> {
+    const m = await this.store.getMachine(machineId)
+    if (!m) return
+    const state = m.daemonState
+    if (!state) return
+    await this.store.upsertMachine({ ...m, daemonState: state })
+  }
+
+  /** Returns the authenticated machine id, its live status and its socket role. */
   private async handleOnboarding(
     ws: WebSocketT,
     msg: any,
-  ): Promise<{ machineId: string; state: MachineStatus }> {
-    const { code, machineId, nodeKey, machineName, dshVersion } = msg.payload ?? {}
-    console.log('[gateway] onboarding', code ? 'code=' + String(code).slice(0, 8) : 'reconnect machineId=' + machineId)
+  ): Promise<{ machineId: string; state: MachineStatus; role: string }> {
+    const { code, machineId, nodeKey, machineName, dshVersion, role } = msg.payload ?? {}
+    const nodeRole = normalizeRole(role)
+    console.log(
+      '[gateway] onboarding',
+      code ? 'code=' + String(code).slice(0, 8) : 'reconnect machineId=' + machineId,
+      'role=' + nodeRole,
+    )
 
     // First-time onboarding with a one-time pairing code (bearer secret over wss).
     if (code) {
@@ -532,7 +673,7 @@ export class NodeRegistry {
       await this.store.appendAudit({ ts: new Date().toISOString(), actor: 'node', machineId: id, action: 'register_pending', result: 'ok' })
 
       ws.send(JSON.stringify({ v: PROTOCOL_VERSION, type: 'registration_status', payload: { state: 'pending', machineId: id, nodeKey } }))
-      return { machineId: id, state: 'pending' }
+      return { machineId: id, state: 'pending', role: nodeRole }
     }
 
     // Reconnect with the issued node key.
@@ -560,7 +701,7 @@ export class NodeRegistry {
           payload: state === 'approved' ? { state, machineId: m.id, leaseMs: LEASE_TTL_MS } : { state, machineId: m.id },
         }),
       )
-      return { machineId: m.id, state }
+      return { machineId: m.id, state, role: nodeRole }
     }
 
     ws.close(4001, 'expected pairing code or machineId+nodeKey')
@@ -569,10 +710,10 @@ export class NodeRegistry {
 
   private expire(): void {
     const now = Date.now()
-    for (const [id, node] of this.nodes) {
+    for (const [key, node] of this.nodes) {
       if (now > node.leaseExpiry) {
         node.ws.close(4005, 'lease expired')
-        this.nodes.delete(id)
+        this.nodes.delete(key)
       }
     }
   }

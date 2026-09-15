@@ -94,6 +94,7 @@ export function isAdmin(user: User): boolean {
 async function enrichMachines(store: IStore, registry: NodeRegistry, machines: Machine[]) {
   const out = []
   for (const m of machines) {
+    const daemon = registry.daemonStatus(m.id)
     out.push({
       id: m.id,
       name: m.name,
@@ -103,6 +104,13 @@ async function enrichMachines(store: IStore, registry: NodeRegistry, machines: M
       lastHeartbeatAt: m.lastHeartbeatAt,
       createdAt: m.createdAt,
       online: registry.isConnected(m.id),
+      consoleConnected: registry.isConsoleConnected(m.id),
+      // Daemon supervision: `supervisorConnected` is live truth from the socket;
+      // `daemonState` falls back to the persisted last-known value, so a machine
+      // whose supervisor dropped still renders its last reported intent.
+      supervisorConnected: daemon.connected,
+      daemonEnabled: daemon.connected ? daemon.enabled : (m.daemonEnabled ?? false),
+      daemonState: daemon.connected ? daemon.state : (m.daemonState ?? ''),
     })
   }
   return out
@@ -295,6 +303,49 @@ export async function registerControl(app: FastifyInstance, store: IStore, regis
     }
     return { ok: true }
   })
+
+  // ---- daemon supervision ----------------------------------------------------
+  // Start/stop/restart the dsh process on a machine, through the machine's own
+  // lifecycle supervisor (a separate socket from the dsh plugin). Admin-only:
+  // this is process control on someone else's host, and it is audited.
+  //
+  // A stop is reversible only because the supervisor outlives dsh: it keeps its
+  // own socket open and can start dsh again from the portal. If no supervisor is
+  // connected the machine cannot be controlled remotely — 503 with that reason.
+  const daemonAction = (action: string) => async (req: any, reply: any) => {
+    const user = req.user!
+    const id = (req.params as any).id as string
+    const m = await store.getMachine(id)
+    if (!m) return reply.code(404).send({ error: 'machine not found' })
+    try {
+      const result = await registry.controlDaemon(id, action)
+      await store.appendAudit({
+        ts: new Date().toISOString(),
+        actor: user.id,
+        machineId: id,
+        action: `daemon_${action}`,
+        result: result.ok ? 'ok' : 'error',
+        detail: result.ok ? result.state ?? '' : result.error ?? '',
+      })
+      if (!result.ok) return reply.code(502).send({ error: result.error ?? `daemon ${action} failed` })
+      return { ok: true, state: result.state ?? null }
+    } catch (e) {
+      const message = String((e as Error).message ?? e)
+      await store.appendAudit({
+        ts: new Date().toISOString(),
+        actor: user.id,
+        machineId: id,
+        action: `daemon_${action}`,
+        result: 'error',
+        detail: message,
+      })
+      return reply.code(503).send({ error: message })
+    }
+  }
+
+  app.post('/gw/machines/:id/daemon/start', { preHandler: requireRole(...ADMIN_ROLES) }, daemonAction('start'))
+  app.post('/gw/machines/:id/daemon/stop', { preHandler: requireRole(...ADMIN_ROLES) }, daemonAction('stop'))
+  app.post('/gw/machines/:id/daemon/restart', { preHandler: requireRole(...ADMIN_ROLES) }, daemonAction('restart'))
 
   // ---- assignments -----------------------------------------------------------
   app.get('/gw/assignments', { preHandler: requireRole(...ADMIN_ROLES) }, async () => {

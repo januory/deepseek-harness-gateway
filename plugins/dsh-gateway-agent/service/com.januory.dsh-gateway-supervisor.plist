@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  dsh-gateway-agent — launchd agent for the dsh LIFECYCLE SUPERVISOR.
+
+  What this supervises is the SUPERVISOR (daemon.js), not dsh itself: the
+  supervisor is what starts/stops/restarts dsh on the gateway's request. If dsh
+  is also managed by launchd, pick ONE owner — the supervisor.
+
+  Install:
+    1. Resolve the supervisor entry installed with the plugin:
+         node -e "console.log(require.resolve('@januory/dsh-gateway-agent/src/daemon.js'))"
+       Replace SUPERVISOR_ENTRY below with that path (no quotes needed here).
+    2. Write the file to ~/Library/LaunchAgents/com.januory.dsh-gateway-supervisor.plist
+    3. launchctl load -w ~/Library/LaunchAgents/com.januory.dsh-gateway-supervisor.plist
+    4. launchctl list | grep dsh-gateway   /   tail -f ~/Library/Logs/dsh-gateway-supervisor.log
+
+  KeepAlive restarts the SUPERVISOR if it dies; dsh's own crash policy is the
+  supervisor's auto-revive setting (off by default).
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.januory.dsh-gateway-supervisor</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>/usr/bin/env</string>
+      <string>node</string>
+      <string>SUPERVISOR_ENTRY</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+      <!-- Same $DSH_HOME the plugin/dsh uses; omit to default to ~/.dsh. -->
+      <key>DSH_HOME</key>
+      <string>/Users/YOUR_USER/.dsh</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/YOUR_USER/Library/Logs/dsh-gateway-supervisor.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/YOUR_USER/Library/Logs/dsh-gateway-supervisor.err.log</string>
+  </dict>
+</plist>

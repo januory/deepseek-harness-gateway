@@ -14,6 +14,12 @@ export interface UserView {
 
 export type MachineStatus = 'pending' | 'approved' | 'revoked'
 
+/**
+ * Machine lifecycle as reported by the machine's own supervisor (DaemonState).
+ * `''` means no supervisor has ever reported — the machine is not supervised.
+ */
+export type DaemonState = 'unknown' | 'starting' | 'running' | 'stopped' | 'exited' | ''
+
 export interface MachineView {
   id: string
   name: string
@@ -22,7 +28,16 @@ export interface MachineView {
   configRev: number
   lastHeartbeatAt?: string
   createdAt: string
+  /** Either socket is live (plugin or supervisor). */
   online: boolean
+  /** The data-plane plugin (inside dsh) holds a socket — console availability. */
+  consoleConnected: boolean
+  /** The lifecycle supervisor holds a socket — start/stop/restart is possible. */
+  supervisorConnected: boolean
+  /** Daemon supervision switched on in the machine's own plugin config. */
+  daemonEnabled: boolean
+  /** Last reported dsh lifecycle state. */
+  daemonState: DaemonState
 }
 
 export interface Assignment {
@@ -55,6 +70,9 @@ export const AUDIT_ACTIONS = [
   'approve_machine',
   'bootstrap_admin',
   'change_password',
+  'daemon_restart',
+  'daemon_start',
+  'daemon_stop',
   'delete_machine',
   'delete_user',
   'login',
