@@ -286,8 +286,10 @@ describe('daemon supervision over a real gateway', () => {
         const failedAudit = await gwReq(port, 'GET', '/gw/audit?action=daemon_start', adminTok)
         expect((failedAudit.json.events as any[])[0]).toMatchObject({ result: 'error' })
 
-        // With no supervisor, control is impossible (503) and the last known
-        // state survives in the portal view.
+        // With no supervisor, control is impossible (503) and the last *settled*
+        // state survives in the portal view. The `starting` above must not stick:
+        // a transient state frozen mid-flight would read as 处理中 in the portal
+        // forever, with no supervisor left to finish it.
         supervisor.close()
         supervisor = undefined
         const sawGone = await waitFor(async () => {
@@ -307,7 +309,7 @@ describe('daemon supervision over a real gateway', () => {
         // the daemon controls become unavailable.
         expect(offlineMachine.online).toBe(true)
         expect(offlineMachine.supervisorConnected).toBe(false)
-        expect(offlineMachine.daemonState).toBe('starting')
+        expect(offlineMachine.daemonState).toBe('running')
 
         // Only an authenticated admin may drive a machine lifecycle.
         const anon = await gwReq(port, 'POST', `/gw/machines/${MACHINE}/daemon/restart`)

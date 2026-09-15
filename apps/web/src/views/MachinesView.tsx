@@ -45,8 +45,12 @@ function versionText(m: MachineView): { text: string; title: string } {
 }
 
 /**
- * Daemon lifecycle badge. Machines with no supervision at all get an explicit
- * 未接入 instead of an empty cell, so the column never looks like lost data.
+ * Daemon lifecycle badge. Two rules that keep it honest:
+ * - machines with no supervision at all get an explicit 未接入 (never an empty cell);
+ * - once the supervisor socket is gone the state is unverifiable, so the badge reads
+ *   离线 and the last reported state moves into the tooltip. Showing
+ *   「运行中 ·离线」/「处理中… ·离线」 claims something we cannot see any more —
+ *   and a transient state frozen mid-flight (处理中) never resolves.
  */
 function DaemonBadge({ m }: { m: MachineView }) {
   if (!m.supervisorConnected && !m.daemonEnabled && !m.daemonState) {
@@ -56,17 +60,20 @@ function DaemonBadge({ m }: { m: MachineView }) {
       </span>
     )
   }
+  if (!m.supervisorConnected) {
+    const last = m.daemonState ? `最后上报的状态：${daemonMeta(m.daemonState, m.daemonAction).label}` : '从未上报过状态'
+    return (
+      <span className="daemon-badge daemon-badge--offline" title={`守护进程未连接：无法远程启停 dsh，也无法确认 dsh 现在是否在运行（${last}）`}>
+        <span className="daemon-badge__dot" />
+        离线
+      </span>
+    )
+  }
   const meta = daemonMeta(m.daemonState, m.daemonAction)
-  const offline = !m.supervisorConnected
   return (
-    <span className={`daemon-badge daemon-badge--${offline ? 'offline' : meta.tone}`} title={
-      offline
-        ? '守护进程未连接：无法远程启停 dsh，显示的是最后一次上报的状态'
-        : '由机器上的守护进程上报'
-    }>
+    <span className={`daemon-badge daemon-badge--${meta.tone}`} title="由机器上的守护进程上报">
       <span className="daemon-badge__dot" />
       {meta.label}
-      {offline ? ' ·离线' : ''}
     </span>
   )
 }

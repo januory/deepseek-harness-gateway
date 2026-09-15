@@ -19,6 +19,7 @@ import {
   DAEMON_CONTROL_TIMEOUT_MS,
   DataKind,
   DataType,
+  DaemonState,
   DaemonType,
   NodeRole,
   normalizeDaemonState,
@@ -651,7 +652,10 @@ export class NodeRegistry {
     if (!m) return
     const patch = { ...m, lastHeartbeatAt: new Date().toISOString() }
     if (node.role === NodeRole.SUPERVISOR) {
-      patch.daemonState = node.daemonState
+      // Only settled states become the "last known" value: a transient `starting`
+      // that gets cut off (supervisor killed mid-action) would otherwise freeze in
+      // the portal as 处理中 forever, with no supervisor left to finish it.
+      if (node.daemonState && node.daemonState !== DaemonState.STARTING) patch.daemonState = node.daemonState
       patch.daemonEnabled = node.daemonEnabled
     } else if (typeof payload.dshVersion === 'string' && payload.dshVersion) {
       patch.dshVersion = payload.dshVersion
@@ -664,7 +668,7 @@ export class NodeRegistry {
     const m = await this.store.getMachine(machineId)
     if (!m) return
     const state = m.daemonState
-    if (!state) return
+    if (!state || state === DaemonState.STARTING) return
     await this.store.upsertMachine({ ...m, daemonState: state })
   }
 
