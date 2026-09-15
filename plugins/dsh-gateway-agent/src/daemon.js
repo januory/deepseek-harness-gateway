@@ -144,6 +144,25 @@ export function splitCommand(command) {
 }
 
 /**
+ * Build the spawn triple for a lifecycle script (exported so tests can assert it
+ * without a Windows box).
+ *
+ * `cmd` must receive the script EXACTLY as written. Node's default argv quoting
+ * escapes the quotes inside it (`"…"` → `\"…\"`) and cmd does not understand
+ * `\"`, so PowerShell ends up with `-File \"C:\…\dsh-lifecycle.ps1"` and fails
+ * with "the -File parameter specifies an invalid path" — which is exactly what
+ * every default Windows script (they all embed a quoted helper path) hit.
+ */
+export function shellCommand(script, shell) {
+  const useCmd = shell === 'cmd'
+  return {
+    file: useCmd ? process.env.ComSpec || 'cmd.exe' : shell || 'sh',
+    args: useCmd ? ['/d', '/s', '/c', script] : ['-c', script],
+    options: useCmd ? { windowsVerbatimArguments: true } : {},
+  }
+}
+
+/**
  * Run a configured lifecycle script through the shell.
  * Resolves { code, stdout, stderr, skipped }; never throws on a non-zero exit.
  */
@@ -153,12 +172,10 @@ export function runScript(script, shell, cwd, timeoutMs = 30_000) {
       resolve({ code: 0, stdout: '', stderr: '', skipped: true })
       return
     }
-    const useCmd = shell === 'cmd'
-    const file = useCmd ? process.env.ComSpec || 'cmd.exe' : shell || 'sh'
-    const args = useCmd ? ['/d', '/s', '/c', script] : ['-c', script]
+    const { file, args, options } = shellCommand(script, shell)
     let child
     try {
-      child = spawn(file, args, { cwd: cwd || undefined, windowsHide: true })
+      child = spawn(file, args, Object.assign({ cwd: cwd || undefined, windowsHide: true }, options))
     } catch (e) {
       resolve({ code: -1, stdout: '', stderr: String((e && e.message) || e) })
       return

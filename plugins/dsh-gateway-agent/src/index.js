@@ -34,7 +34,7 @@ export const name = 'dsh-gateway-agent'
 const PACKAGE = '@januory/dsh-gateway-agent'
 const NAMESPACE = 'gatewayAgent'
 // Keep in sync with package.json "version".
-const AGENT_VERSION = '0.2.0'
+const AGENT_VERSION = '0.2.1'
 
 // Verbose per-request relay logging (recv / forward / upstream) is opt-in via
 // DSH_AGENT_DEBUG=1; normal operation stays quiet.

@@ -6,7 +6,7 @@
 // non-zero path is exercised through a command that really fails.
 // Run: node test/daemon.test.js
 
-import { expandCommand, splitCommand, runScript, probeRunning, Supervisor } from '../src/daemon.js'
+import { expandCommand, splitCommand, runScript, probeRunning, shellCommand, Supervisor } from '../src/daemon.js'
 
 const WIN = process.platform === 'win32'
 const SHELL = WIN ? 'cmd' : 'sh'
@@ -46,6 +46,21 @@ check(bad.code !== 0, 'a failing script reports a non-zero code instead of throw
 
 const empty = await runScript('', SHELL)
 check(empty.skipped === true && empty.code === 0, 'an empty script is skipped, not spawned')
+
+// ---- shellCommand: cmd must receive the script verbatim -----------------------
+// Regression: Node's default argv quoting turned the quoted helper path in every
+// Windows default script into `\"…\"`, cmd kept the backslash, and PowerShell died
+// with "the -File parameter specifies an invalid path".
+{
+  const winScript = 'powershell -NoProfile -File "C:\\Program Files\\dsh\\dsh-lifecycle.ps1" start 3080'
+  const cmd = shellCommand(winScript, 'cmd')
+  check(cmd.args.length === 4 && cmd.args[0] === '/d' && cmd.args[2] === '/c', 'cmd runs the script through /d /s /c')
+  check(cmd.args[3] === winScript, 'cmd receives the script untouched, quotes included')
+  check(cmd.options.windowsVerbatimArguments === true, 'cmd spawns verbatim so embedded quotes survive')
+  const sh = shellCommand('echo hi', 'sh')
+  check(sh.file === 'sh' && sh.args.join('|') === '-c|echo hi', 'POSIX still runs through -c')
+  check(!sh.options.windowsVerbatimArguments, 'POSIX keeps the default quoting behaviour')
+}
 
 check((await probeRunning({ status: '' }, {}, undefined)) === null, 'no probe configured yields null')
 check((await probeRunning({}, {}, undefined)) === null, 'missing probe config yields null')
