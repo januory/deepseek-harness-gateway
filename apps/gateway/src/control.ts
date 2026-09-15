@@ -111,6 +111,9 @@ async function enrichMachines(store: IStore, registry: NodeRegistry, machines: M
       name: m.name,
       status: m.status,
       dshVersion: m.dshVersion,
+      // Live plugin version from the console heartbeat: the 版本 column has
+      // nothing else to show, because the plugin reports no dsh version.
+      agentVersion: registry.agentVersion(m.id),
       configRev: m.configRev,
       lastHeartbeatAt: m.lastHeartbeatAt,
       createdAt: m.createdAt,

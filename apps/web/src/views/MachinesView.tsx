@@ -37,9 +37,25 @@ function daemonMeta(state: DaemonState, action?: string): { label: string; tone:
   }
 }
 
-/** Daemon lifecycle badge. Renders nothing for machines without supervision. */
+/** 版本列：优先 dsh 版本，其次接入插件版本（两者含义不同，用 title 说明）。 */
+function versionText(m: MachineView): { text: string; title: string } {
+  if (m.dshVersion) return { text: m.dshVersion, title: 'dsh 版本' }
+  if (m.agentVersion) return { text: m.agentVersion, title: '网关接入插件（dsh-gateway-agent）版本' }
+  return { text: '—', title: '尚未上报版本（机器离线）' }
+}
+
+/**
+ * Daemon lifecycle badge. Machines with no supervision at all get an explicit
+ * 未接入 instead of an empty cell, so the column never looks like lost data.
+ */
 function DaemonBadge({ m }: { m: MachineView }) {
-  if (!m.supervisorConnected && !m.daemonEnabled && !m.daemonState) return null
+  if (!m.supervisorConnected && !m.daemonEnabled && !m.daemonState) {
+    return (
+      <span className="muted" title="该机器未接入守护进程（supervisor）：无法远程启动/关闭/重启 dsh">
+        未接入
+      </span>
+    )
+  }
   const meta = daemonMeta(m.daemonState, m.daemonAction)
   const offline = !m.supervisorConnected
   return (
@@ -272,7 +288,12 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
                       </td>
                       {/* Same style as the heartbeat cell so both metadata columns
                           share one baseline (the mono 12.5px glyph sits ~1px off). */}
-                      <td className="muted">{m.dshVersion || '—'}</td>
+                      <td className="muted">
+                        {(() => {
+                          const v = versionText(m)
+                          return <span title={v.title}>{v.text}</span>
+                        })()}
+                      </td>
                       <td className="muted">
                         <DaemonBadge m={m} />
                       </td>
@@ -299,7 +320,7 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
                     </span>
                   </div>
                   <div className="machine-card__meta">
-                    <span>版本 {m.dshVersion || '—'}</span>
+                    <span title={versionText(m).title}>版本 {versionText(m).text}</span>
                     <DaemonBadge m={m} />
                     <span>最后心跳 {formatTime(m.lastHeartbeatAt)}</span>
                   </div>
@@ -401,7 +422,7 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
                 {edit.m.id}
               </span>
               <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>
-                <StatusBadge status={edit.m.status} /> · dsh {edit.m.dshVersion || '—'} · 创建于 {formatTime(edit.m.createdAt)}
+                <StatusBadge status={edit.m.status} /> · <span title={versionText(edit.m).title}>版本 {versionText(edit.m).text}</span> · 创建于 {formatTime(edit.m.createdAt)}
               </div>
             </div>
             <Field label="名称">

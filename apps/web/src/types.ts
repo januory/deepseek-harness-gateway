@@ -25,6 +25,8 @@ export interface MachineView {
   name: string
   status: MachineStatus
   dshVersion?: string
+  /** Live version of the gateway agent plugin, reported in every heartbeat. */
+  agentVersion?: string
   configRev: number
   lastHeartbeatAt?: string
   createdAt: string

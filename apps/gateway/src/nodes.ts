@@ -46,6 +46,8 @@ interface ConnectedNode {
   daemonState: string
   /** Control action behind that state (start/stop/restart), for finer labels. */
   daemonAction: string
+  /** Live plugin version the console socket reports in every heartbeat. */
+  agentVersion: string
   /** Whether the machine has daemon supervision enabled in its own config. */
   daemonEnabled: boolean
 }
@@ -190,6 +192,15 @@ export class NodeRegistry {
       state: normalizeDaemonState(node.daemonState),
       action: node.daemonAction || '',
     }
+  }
+
+  /**
+   * Live plugin (agent) version of a machine's console socket, or '' when the
+   * machine is offline. Live-only on purpose: it is heartbeat data, not state
+   * worth persisting (an offline machine's "last seen version" would only rot).
+   */
+  agentVersion(machineId: string): string {
+    return this.consoleNode(machineId)?.agentVersion ?? ''
   }
 
   /**
@@ -516,6 +527,7 @@ export class NodeRegistry {
               parser,
               daemonState: '',
               daemonAction: '',
+              agentVersion: '',
               daemonEnabled: false,
             })
             console.log(
@@ -535,6 +547,12 @@ export class NodeRegistry {
         node.leaseExpiry = Date.now() + LEASE_TTL_MS
         node.daemonState = normalizeDaemonState(payload.daemonState ?? payload.daemon?.state)
         if (typeof payload.daemonAction === 'string') node.daemonAction = payload.daemonAction
+        // The console plugin reports its own version every heartbeat; keep it live
+        // so the portal can show which agent a machine runs (the persisted
+        // dshVersion is usually empty — the plugin has no dsh version to report).
+        if (role === NodeRole.CONSOLE && typeof payload.agentVersion === 'string' && payload.agentVersion) {
+          node.agentVersion = payload.agentVersion
+        }
         node.daemonEnabled = payload.daemonEnabled === true || payload.daemon?.enabled === true
         ws.send(JSON.stringify({ v: PROTOCOL_VERSION, type: 'lease', payload: { ttlMs: LEASE_TTL_MS } }))
         this.recordHeartbeat(node, payload).catch((e) =>
