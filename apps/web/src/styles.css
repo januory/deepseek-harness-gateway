@@ -636,6 +636,51 @@ h3 {
   background: var(--dot-off);
 }
 
+/* ---- daemon lifecycle badge (machine catalog) --------------------------------------- */
+/* Reported by the machine's own supervisor; `--offline` marks a badge whose
+   supervisor socket is gone, so what is shown is the last known state. */
+
+.daemon-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  white-space: nowrap;
+  background: var(--surface-raised);
+  color: var(--gray-text);
+}
+
+.daemon-badge__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.daemon-badge--ok {
+  background: var(--ok-weak);
+  color: var(--ok-text);
+}
+.daemon-badge--warn {
+  background: var(--warn-weak);
+  color: var(--warn-text);
+}
+.daemon-badge--bad {
+  background: var(--danger-weak);
+  color: var(--danger-text);
+}
+.daemon-badge--muted,
+.daemon-badge--offline {
+  background: var(--surface-raised);
+  color: var(--gray-text);
+}
+.daemon-badge--offline {
+  opacity: 0.75;
+}
+
 /* ---- table --------------------------------------------------------------------------- */
 
 .table {

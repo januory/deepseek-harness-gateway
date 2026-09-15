@@ -40,6 +40,8 @@ var INVOCATIONS = [
   invocation('getConfig'),
   invocation('applyConfig', [jsonParameter('config')]),
   invocation('onboard', [jsonParameter('gatewayUrl'), jsonParameter('pairingCode')]),
+  invocation('getDaemonConfig'),
+  invocation('saveDaemonConfig', [jsonParameter('config')]),
 ]
 
 // Remote 调用 resolve 为 { value: <host 返回 { ok, ... }> }；unwrap 取出内层信封。
@@ -61,6 +63,25 @@ function stateMeta(state) {
     case 'error': return { label: '错误', color: '#e5484d' }
     default: return { label: state || '未知', color: '#8b8f98' }
   }
+}
+
+// 守护进程（dsh 生命周期）状态：由独立 supervisor 进程上报。
+function daemonMeta(state) {
+  switch (state) {
+    case 'running': return { label: '运行中', color: '#46a758' }
+    case 'starting': return { label: '处理中', color: '#f5a623' }
+    case 'stopped': return { label: '已关闭', color: '#8b8f98' }
+    case 'exited': return { label: '已退出', color: '#e5484d' }
+    case 'unknown': return { label: '未知', color: '#8b8f98' }
+    default: return { label: '未接入守护进程', color: '#8b8f98' }
+  }
+}
+
+function timeText(iso) {
+  if (!iso) return '—'
+  var d = new Date(iso)
+  if (isNaN(d.getTime())) return String(iso)
+  return d.toLocaleString()
 }
 
 window.__ModuleLoader__.load({
@@ -99,7 +120,7 @@ window.__ModuleLoader__.load({
     var S = {
       wrap: { padding: 16, fontSize: 14, lineHeight: 1.6, maxWidth: 720, color: 'inherit' },
       title: { fontWeight: 600, fontSize: 16, margin: '0 0 4px', color: 'inherit' },
-      desc: { margin: '0 0 14px', color: '#8b8f98', fontSize: 13 },
+      desc: { margin: '0 0 14px', color: '#8b8f98', fontSize: 13, lineHeight: 1.6 },
       field: { display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 12 },
       fieldLabel: { color: '#8b8f98', fontSize: 12.5 },
       input: {
@@ -141,6 +162,26 @@ window.__ModuleLoader__.load({
       },
       kv: { display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: '4px 12px', fontSize: 12.5 },
       kvKey: { color: '#8b8f98' },
+      // 守护进程服务区（卡片 + 脚本编辑）
+      daemonCard: {
+        marginTop: 18, paddingTop: 16, borderTop: '1px solid rgba(127,127,127,0.3)',
+      },
+      hint: { color: '#8b8f98', fontSize: 12, lineHeight: 1.5 },
+      checkRow: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, marginBottom: 4, fontSize: 13 },
+      checkbox: { width: 16, height: 16, flexShrink: 0 },
+      // 设置分区页签：网关接入 / 守护进程服务。两块内容都保持挂载，只用
+      // display 切换——切走再切回来不会丢掉正在编辑的脚本。
+      tabs: { display: 'flex', gap: 4, margin: '0 0 2px', borderBottom: '1px solid rgba(127,127,127,0.25)' },
+      tab: {
+        appearance: 'none', background: 'transparent', border: 'none', font: 'inherit',
+        borderBottom: '2px solid transparent', color: '#8b8f98', marginBottom: -1,
+        padding: '8px 12px', fontSize: 13.5, cursor: 'pointer',
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+      },
+      tabActive: { color: 'inherit', borderBottomColor: '#6e56cf', fontWeight: 600 },
+      tabDot: { width: 8, height: 8, borderRadius: '50%', display: 'inline-block', flexShrink: 0 },
+      pane: { paddingTop: 14 },
+      hidden: { display: 'none' },
     }
 
     function kv(key, value) {
@@ -153,6 +194,15 @@ window.__ModuleLoader__.load({
     }
 
     // 统一远程调用入口：方法缺失时给出「命名空间上有哪些属性」的明确报错。
+    function withTimeout(promise, ms) {
+      return Promise.race([
+        promise,
+        new Promise(function (_resolve, reject) {
+          setTimeout(function () { reject(new Error('调用超时（' + ms / 1000 + 's）')) }, ms)
+        }),
+      ])
+    }
+
     function remoteCall(namespace, method, args) {
       if (!namespace) throw new Error('客户端尚未就绪')
       var fn = namespace[method]
@@ -162,6 +212,184 @@ window.__ModuleLoader__.load({
         throw new Error('远程方法 ' + method + ' 不可用（命名空间属性: ' + (keys.length ? keys.join(', ') : '(空)') + '）')
       }
       return fn.apply(null, args || [])
+    }
+
+    function DaemonField(props) {
+      return createElement(
+        'label',
+        { style: S.field },
+        createElement('span', { style: S.fieldLabel }, props.label),
+        props.hint ? createElement('span', { style: S.hint }, props.hint) : null,
+        createElement('textarea', {
+          value: props.value || '',
+          placeholder: props.placeholder || '',
+          spellCheck: false,
+          rows: props.rows || 2,
+          onChange: function (e) { props.onChange(e.target.value) },
+          style: Object.assign({}, S.mono, {
+            padding: '7px 10px', background: 'rgba(127,127,127,0.08)', color: 'inherit',
+            border: '1px solid rgba(127,127,127,0.3)', borderRadius: 6,
+            resize: 'vertical', minHeight: 44, lineHeight: 1.5,
+          }, props.narrow ? { fontSize: 16 } : {}),
+        }),
+      )
+    }
+
+    // 守护进程服务：勾选后由独立 supervisor 进程托管本机 dsh 的启动/停止/重启，
+    // 网关「机器目录」据此给出三个按钮。脚本即网关将要执行的命令，可改。
+    function DaemonSection(props) {
+      var remote = props.remote
+      var status = props.status
+      // 作为页签内容渲染时不再需要分区标题和上边框（页签本身就是标题）。
+      var tabbed = props.tabbed === true
+      var daemon = status && status.daemon ? status.daemon : null
+
+      var _cfg = useState(null)
+      var cfg = _cfg[0]
+      var setCfg = _cfg[1]
+      var _err = useState(null)
+      var error = _err[0]
+      var setError = _err[1]
+      var _notice = useState(null)
+      var notice = _notice[0]
+      var setNotice = _notice[1]
+      var _busy = useState(false)
+      var busy = _busy[0]
+      var setBusy = _busy[1]
+      var narrow = useIsNarrow()
+
+      // 首次拿到 daemon 配置就填进本地表单；之后不再覆盖用户正在编辑的内容。
+      useEffect(function () {
+        if (cfg || !daemon || !daemon.config) return
+        setCfg(daemon.config)
+      }, [daemon, cfg])
+
+      if (!daemon) return null
+
+      var scripts = cfg && cfg.scripts ? cfg.scripts : (daemon.config ? daemon.config.scripts : {}) || {}
+      var child = cfg && cfg.child ? cfg.child : (daemon.config ? daemon.config.child : {}) || {}
+      var enabled = cfg ? cfg.enabled === true : daemon.enabled === true
+      var isWin = /^win/i.test(String((typeof navigator !== 'undefined' && navigator.platform) || ''))
+      var meta = daemonMeta(daemon.state ? daemon.state.state : '')
+      var supervised = !!(daemon.state && daemon.state.supervisorPid)
+
+      function patch(fields) {
+        setCfg(Object.assign({}, cfg || daemon.config || {}, fields))
+      }
+      function patchScripts(fields) {
+        patch({ scripts: Object.assign({}, scripts, fields) })
+      }
+      function patchChild(fields) {
+        patch({ child: Object.assign({}, child, fields) })
+      }
+
+      function save() {
+        if (!remote) { setError('客户端尚未就绪'); return }
+        setBusy(true)
+        setError(null)
+        setNotice(null)
+        var body = Object.assign({}, cfg || {}, {
+          enabled: enabled,
+          scripts: scripts,
+          child: child,
+        })
+        try {
+          withTimeout(Promise.resolve(remoteCall(remote, 'saveDaemonConfig', [body])), 15000).then(
+            function (r) {
+              setBusy(false)
+              var v = unwrap(r)
+              if (v.error) { setError(v.error); return }
+              if (v.config) setCfg(v.config)
+              setNotice(enabled ? '已保存。守护进程会按新脚本执行启动/停止/重启。' : '已保存：守护进程服务已关闭。')
+            },
+            function (e) { setBusy(false); setError(String(e && e.message ? e.message : e)) },
+          )
+        } catch (e) {
+          setBusy(false)
+          setError(String(e && e.message ? e.message : e))
+        }
+      }
+
+      var startPh = isWin ? 'powershell -NoProfile -ExecutionPolicy Bypass -File "<插件目录>\\service\\dsh-lifecycle.ps1" start {port}' : 'nohup dsh web --port {port} >/dev/null 2>&1 &'
+      var stopPh = isWin ? 'powershell -NoProfile -ExecutionPolicy Bypass -File "<插件目录>\\service\\dsh-lifecycle.ps1" stop {port}' : 'pkill -f "dsh web"'
+      var statusPh = isWin ? 'powershell -NoProfile -ExecutionPolicy Bypass -File "<插件目录>\\service\\dsh-lifecycle.ps1" status {port}' : 'pgrep -f "dsh web" >/dev/null'
+
+      return createElement(
+        'div',
+        { style: tabbed ? null : S.daemonCard },
+        tabbed ? null : createElement('div', { style: S.title }, '守护进程服务'),
+        createElement(
+          'p',
+          { style: S.desc },
+          '勾选后，本机由一个独立的守护进程（supervisor）托管 dsh 的启动/停止/重启，并由网关「机器目录」远程操作。守护进程不是 dsh 的子进程：dsh 被关闭后它仍然在线，因此可以被重新启动。',
+        ),
+        createElement(
+          'label',
+          { style: S.checkRow },
+          createElement('input', {
+            type: 'checkbox',
+            checked: enabled,
+            onChange: function (e) { patch({ enabled: e.target.checked }) },
+            style: S.checkbox,
+          }),
+          createElement('span', { style: { fontWeight: 600 } }, '启用守护进程服务（允许网关远程启停本机 dsh）'),
+        ),
+        createElement(
+          'div',
+          { style: S.statusCard },
+          createElement(
+            'div',
+            { style: S.statusHead },
+            createElement('span', { style: Object.assign({}, S.dot, { background: meta.color }) }),
+            createElement('strong', { style: { color: meta.color, fontSize: 13.5 } }, meta.label),
+            createElement(
+              'span',
+              { style: S.hint },
+              supervised ? '守护进程在线（pid ' + daemon.state.supervisorPid + '）' : '守护进程未运行 / 未接入',
+            ),
+          ),
+          createElement(
+            'div',
+            { style: S.kv },
+            kv('守护状态', daemon.state && daemon.state.state ? daemon.state.state : '—'),
+            kv('最近动作', daemon.state && daemon.state.lastAction ? daemon.state.lastAction + ' @ ' + timeText(daemon.state.lastActionAt) : '—'),
+            kv('dsh 进程', daemon.state && daemon.state.pid ? String(daemon.state.pid) : '—'),
+          ),
+          daemon.state && daemon.state.lastError
+            ? createElement('div', { style: Object.assign({}, S.error, { marginTop: 10, marginBottom: 0 }) }, '守护最近错误：' + daemon.state.lastError)
+            : null,
+        ),
+        createElement(
+          'p',
+          { style: Object.assign({}, S.hint, { marginTop: 10 }) },
+          '网关将执行下面这些命令。守护进程需要独立于 dsh 常驻（见插件包 service/ 下的 systemd / launchd / Windows 服务样例）：',
+        ),
+        createElement('div', { style: Object.assign({}, S.mono, { marginBottom: 12 }) }, daemon.supervisorCommand || daemon.supervisor || 'daemon.js'),
+        DaemonField({ label: '启动脚本', hint: '占位符：{port} dsh 端口、{dshHome} dsh home、{home} 插件数据目录、{pid} 受管子进程 PID；留空则必须填「子进程命令」', value: scripts.start, placeholder: startPh, onChange: function (v) { patchScripts({ start: v }) }, narrow: narrow, rows: 2 }),
+        DaemonField({ label: '停止脚本', value: scripts.stop, placeholder: stopPh, onChange: function (v) { patchScripts({ stop: v }) }, narrow: narrow, rows: 2 }),
+        DaemonField({ label: '重启脚本（可选）', hint: '留空则用「停止 + 启动」', value: scripts.restart, placeholder: '留空', onChange: function (v) { patchScripts({ restart: v }) }, narrow: narrow, rows: 2 }),
+        DaemonField({ label: '状态探测脚本（可选）', hint: '退出码 0 表示 dsh 正在运行；用于识别脚本模式下的意外退出', value: scripts.status, placeholder: statusPh, onChange: function (v) { patchScripts({ status: v }) }, narrow: narrow, rows: 2 }),
+        DaemonField({ label: '子进程命令（可选，优先于启动脚本）', hint: '由守护进程直接 spawn 为受管子进程，可精确停止（SIGTERM → SIGKILL）', value: child.command, placeholder: 'dsh web --port {port}', onChange: function (v) { patchChild({ command: v }) }, narrow: narrow, rows: 2 }),
+        createElement(
+          'div',
+          { style: S.kv },
+          kv('平台', isWin ? 'Windows' : 'POSIX'),
+          kv('shell', scripts.shell || (isWin ? 'cmd' : 'sh')),
+        ),
+        createElement(
+          'div',
+          // 保存按钮单独成区：与上方表单留出明显间距，避免贴着字段。
+          // 注意必须包在 { style: … } 里：直接传样式对象会被当成 HTML 属性，样式静默失效。
+          {
+            style: narrow
+              ? Object.assign({}, S.row, { flexDirection: 'column', alignItems: 'stretch', gap: 8, marginTop: 16 })
+              : Object.assign({}, S.row, { marginTop: 16 }),
+          },
+          createElement('button', { onClick: save, disabled: busy || !remote, style: Object.assign({}, S.primary, busy || !remote ? S.disabled : {}, narrow ? { width: '100%', padding: '11px 14px' } : {}) }, busy ? '保存中…' : '保存守护设置'),
+        ),
+        error ? createElement('div', { style: S.error }, String(error)) : null,
+        notice ? createElement('div', { style: S.notice }, String(notice)) : null,
+      )
     }
 
     function AgentSection(props) {
@@ -243,15 +471,6 @@ window.__ModuleLoader__.load({
         }
       }, [remote])
 
-      function withTimeout(promise, ms) {
-        return Promise.race([
-          promise,
-          new Promise(function (_resolve, reject) {
-            setTimeout(function () { reject(new Error('调用超时（' + ms / 1000 + 's）')) }, ms)
-          }),
-        ])
-      }
-
       function doOnboard() {
         if (!remote) return setError('客户端尚未就绪')
         if (!gatewayUrl) return setError('请填写网关地址')
@@ -319,43 +538,85 @@ window.__ModuleLoader__.load({
         )
       }
 
+      // 页签：网关接入 / 守护进程服务。两块都保持挂载，用 display 切换，
+      // 这样切走再切回来不会重置正在编辑的表单。
+      var _tab = useState('gateway')
+      var tab = _tab[0]
+      var setTab = _tab[1]
+      var daemonStatus = status && status.daemon ? status.daemon : null
+      var daemonState = daemonStatus && daemonStatus.state ? daemonStatus.state.state : ''
+      var daemonTabMeta = daemonState ? daemonMeta(daemonState) : null
+
+      function tabButton(id, label, badge) {
+        var active = tab === id
+        return createElement(
+          'button',
+          {
+            type: 'button',
+            role: 'tab',
+            'aria-selected': active,
+            onClick: function () { setTab(id) },
+            style: Object.assign({}, S.tab, active ? S.tabActive : {}),
+          },
+          label,
+          badge ? createElement('span', { style: Object.assign({}, S.tabDot, { background: badge.color }), title: badge.label }) : null,
+        )
+      }
+
       return createElement(
         'div',
         { style: S.wrap },
-        createElement('div', { style: S.title }, '网关接入'),
-        createElement('p', { style: S.desc }, '把本机 dsh 接入网关：填网关地址（协议 + 服务器地址，如 ws://127.0.0.1:3300）与配对码，发起入网申请后由管理员在网关审批。'),
-        field('网关地址', 'ws://127.0.0.1:3300', gatewayUrl, setGatewayUrl),
-        field('配对码（管理员签发）', '一次性配对码', pairingCode, setPairingCode),
         createElement(
           'div',
-          // 窄屏下按钮改为纵向全宽排列；宽屏保持并排。
-          { style: narrow ? Object.assign({}, S.row, { flexDirection: 'column', alignItems: 'stretch', gap: 8, marginTop: 8 }) : S.row },
-          createElement('button', { onClick: doOnboard, disabled: busy || !remote, style: Object.assign({}, S.primary, busy || !remote ? S.disabled : {}, narrow ? { width: '100%', padding: '11px 14px' } : {}) }, busy ? '发起中…' : '发起入网申请'),
-          createElement('button', { onClick: doRefresh, disabled: !remote, style: Object.assign({}, S.btn, !remote ? S.disabled : {}, narrow ? { width: '100%', padding: '11px 14px' } : {}) }, '查询状态'),
+          { style: S.tabs, role: 'tablist' },
+          tabButton('gateway', '网关接入', null),
+          daemonStatus ? tabButton('daemon', '守护进程服务', daemonTabMeta) : null,
         ),
-        error ? createElement('div', { style: S.error }, String(error)) : null,
-        notice ? createElement('div', { style: S.notice }, String(notice)) : null,
-        meta
+        createElement(
+          'div',
+          { style: Object.assign({}, S.pane, tab === 'gateway' ? null : S.hidden) },
+          createElement('p', { style: S.desc }, '把本机 dsh 接入网关：填网关地址（协议 + 服务器地址，如 ws://127.0.0.1:3300）与配对码，发起入网申请后由管理员在网关审批。'),
+          field('网关地址', 'ws://127.0.0.1:3300', gatewayUrl, setGatewayUrl),
+          field('配对码（管理员签发）', '一次性配对码', pairingCode, setPairingCode),
+          createElement(
+            'div',
+            // 窄屏下按钮改为纵向全宽排列；宽屏保持并排。
+            { style: narrow ? Object.assign({}, S.row, { flexDirection: 'column', alignItems: 'stretch', gap: 8, marginTop: 8 }) : S.row },
+            createElement('button', { onClick: doOnboard, disabled: busy || !remote, style: Object.assign({}, S.primary, busy || !remote ? S.disabled : {}, narrow ? { width: '100%', padding: '11px 14px' } : {}) }, busy ? '发起中…' : '发起入网申请'),
+            createElement('button', { onClick: doRefresh, disabled: !remote, style: Object.assign({}, S.btn, !remote ? S.disabled : {}, narrow ? { width: '100%', padding: '11px 14px' } : {}) }, '查询状态'),
+          ),
+          error ? createElement('div', { style: S.error }, String(error)) : null,
+          notice ? createElement('div', { style: S.notice }, String(notice)) : null,
+          meta
+            ? createElement(
+                'div',
+                // 同前：样式必须包在 { style: … } 里，否则边框/内边距全部失效。
+                { style: narrow ? Object.assign({}, S.statusCard, { padding: 10 }) : S.statusCard },
+                createElement(
+                  'div',
+                  { style: S.statusHead },
+                  createElement('span', { style: Object.assign({}, S.dot, { background: meta.color }) }),
+                  createElement('strong', { style: { color: meta.color, fontSize: 14 } }, meta.label),
+                ),
+                createElement(
+                  'div',
+                  { style: S.kv },
+                  kv('网关地址', status.gatewayUrl || '—'),
+                  kv('机器 ID', status.machineId || '—'),
+                  kv('状态', status.state),
+                  kv('已发节点密钥', status.hasNodeKey ? '是' : '否'),
+                  kv('dsh 版本', status.dshVersion || '—'),
+                  kv('RTT', status.rttMs != null ? status.rttMs + ' ms' : '—'),
+                ),
+                status.lastError ? createElement('div', { style: Object.assign({}, S.error, { marginTop: 10 }) }, '最近错误：' + status.lastError) : null,
+              )
+            : null,
+        ),
+        daemonStatus
           ? createElement(
               'div',
-              narrow ? Object.assign({}, S.statusCard, { padding: 10 }) : S.statusCard,
-              createElement(
-                'div',
-                { style: S.statusHead },
-                createElement('span', { style: Object.assign({}, S.dot, { background: meta.color }) }),
-                createElement('strong', { style: { color: meta.color, fontSize: 14 } }, meta.label),
-              ),
-              createElement(
-                'div',
-                { style: S.kv },
-                kv('网关地址', status.gatewayUrl || '—'),
-                kv('机器 ID', status.machineId || '—'),
-                kv('状态', status.state),
-                kv('已发节点密钥', status.hasNodeKey ? '是' : '否'),
-                kv('dsh 版本', status.dshVersion || '—'),
-                kv('RTT', status.rttMs != null ? status.rttMs + ' ms' : '—'),
-              ),
-              status.lastError ? createElement('div', { style: Object.assign({}, S.error, { marginTop: 10 }) }, '最近错误：' + status.lastError) : null,
+              { style: Object.assign({}, S.pane, tab === 'daemon' ? null : S.hidden) },
+              createElement(DaemonSection, { remote: remote, status: status, getRemote: getRemote, tabbed: true }),
             )
           : null,
       )

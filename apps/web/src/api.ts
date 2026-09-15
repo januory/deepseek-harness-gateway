@@ -104,11 +104,34 @@ export const api = {
 
   // ---- machines ---------------------------------------------------------------
   machines: () => req<{ machines: MachineView[] }>('/gw/machines'),
-  approveMachine: (id: string) => req<{ ok: boolean }>('/gw/machines/' + id + '/approve', { method: 'POST' }),
-  revokeMachine: (id: string) => req<{ ok: boolean }>('/gw/machines/' + id + '/revoke', { method: 'POST' }),
+  approveMachine: (id: string) =>
+    req<{ ok: boolean }>('/gw/machines/' + id + '/approve', { method: 'POST', body: JSON.stringify({}) }),
+  revokeMachine: (id: string) =>
+    req<{ ok: boolean }>('/gw/machines/' + id + '/revoke', { method: 'POST', body: JSON.stringify({}) }),
   deleteMachine: (id: string) => req<{ ok: boolean }>('/gw/machines/' + id, { method: 'DELETE' }),
   renameMachine: (id: string, name: string) =>
     req<{ ok: boolean }>('/gw/machines/' + id + '/rename', { method: 'POST', body: JSON.stringify({ name }) }),
+
+  // ---- daemon supervision (machine lifecycle: start/stop/restart dsh) --------------
+  // Only works while the machine's supervisor socket is connected; the gateway
+  // answers 503 when it is not (nothing on the machine can be reached then).
+  // The empty JSON body is required: a body-less POST is rejected by Fastify
+  // with 415 before the route handler ever runs.
+  daemonStart: (id: string) =>
+    req<{ ok: boolean; state: string | null }>('/gw/machines/' + id + '/daemon/start', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+  daemonStop: (id: string) =>
+    req<{ ok: boolean; state: string | null }>('/gw/machines/' + id + '/daemon/stop', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+  daemonRestart: (id: string) =>
+    req<{ ok: boolean; state: string | null }>('/gw/machines/' + id + '/daemon/restart', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
 
   // ---- assignments -------------------------------------------------------------
   assignments: () => req<{ assignments: Assignment[] }>('/gw/assignments'),

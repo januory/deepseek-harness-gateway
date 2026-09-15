@@ -8,6 +8,7 @@
 
 import http from 'node:http'
 import { hostname } from 'node:os'
+import { fileURLToPath } from 'node:url'
 import WebSocket from 'ws'
 import {
   PROTOCOL_VERSION,
@@ -21,10 +22,12 @@ import {
   encodeFrame,
   encodeBinaryFrame,
   BinaryFrameParser,
+  NodeRole,
 } from './protocol.js'
 import { configDir, createConfigStore, sanitizeConfig, CLIENT_FIELDS } from './config.js'
 import { nextBackoff, backoffDelay } from './backoff.js'
 import { loopbackSameOriginHeaders } from './origin.js'
+import { readDaemonConfig, writeDaemonConfig, readDaemonRuntime } from './daemon-config.js'
 
 export const name = 'dsh-gateway-agent'
 
@@ -69,6 +72,29 @@ export function mintOperatorCookie(connection, dshPort) {
 }
 
 // ---------------------------------------------------------------------------
+// ----- daemon supervision (read-only here; daemon.js owns the lifecycle) -----
+// Daemon supervision: this plugin only READS the shared daemon config/state.
+// The supervisor process (daemon.js) owns the dsh child and the state file; the
+// plugin writes the config through saveDaemonConfig and reports both to the
+// settings card. See ADR-0010: the plugin itself never manages a child process.
+// ---------------------------------------------------------------------------
+/** Settings-card view of daemon supervision: config + supervisor runtime state. */
+function daemonSnapshot() {
+  const dir = configDir()
+  const cfg = readDaemonConfig(dir)
+  const state = readDaemonRuntime(dir)
+  // `supervisorSource` points at the standalone entry shipped next to this
+  // plugin, so the settings card can tell the operator exactly what to run.
+  const supervisor = 'daemon.js'
+  // The exact command that starts the supervisor on this machine. Derived from
+  // this module's own location so it is correct for a link:, npm or workspace
+  // install — the settings card shows it verbatim so the operator can service-ize
+  // it without guessing paths.
+  const entry = fileURLToPath(new URL('./daemon.js', import.meta.url))
+  const supervisorCommand = `node "${entry}"`
+  return { enabled: cfg.enabled === true, config: cfg, supervisor, supervisorCommand, state }
+}
+
 // Outbound connection + data-plane bridge.
 // ---------------------------------------------------------------------------
 
@@ -190,8 +216,8 @@ class Connection {
         // Reconnect with the issued node key; otherwise onboard with the pairing code.
         const payload =
           this.machineId && this.nodeKey
-            ? { nonce: msg.payload.nonce, machineId: this.machineId, nodeKey: this.nodeKey }
-            : { nonce: msg.payload.nonce, code: code ?? '', machineName: (config && config.machineName) || hostname(), dshVersion: (config && config.dshVersion) || '' }
+            ? { nonce: msg.payload.nonce, machineId: this.machineId, nodeKey: this.nodeKey, role: NodeRole.CONSOLE }
+            : { nonce: msg.payload.nonce, code: code ?? '', machineName: (config && config.machineName) || hostname(), dshVersion: (config && config.dshVersion) || '', role: NodeRole.CONSOLE }
         ws.send(JSON.stringify({ v: PROTOCOL_VERSION, type: ControlType.CHALLENGE_RESPONSE, payload }))
       } else if (msg.type === ControlType.REGISTRATION_STATUS) {
         if (msg.payload.state === 'approved') {
@@ -444,6 +470,10 @@ class Connection {
       gatewayUrl: configuredUrl || this.gatewayUrl || '',
       hasNodeKey: !!this.nodeKey,
       agentVersion: AGENT_VERSION,
+      // Daemon supervision, for the settings card. The plugin is NOT the
+      // supervisor: it reports the config it wrote plus the state file the
+      // standalone supervisor keeps fresh — the supervisor owns the rest.
+      daemon: daemonSnapshot(),
       dshVersion: this.dshVersion,
       rttMs: this.rttMs,
       lastError: this.lastError,
@@ -481,6 +511,8 @@ const INVOCATIONS = [
   invocation('getConfig'),
   invocation('applyConfig', [jsonParameter('config')]),
   invocation('onboard', [jsonParameter('gatewayUrl'), jsonParameter('pairingCode')]),
+  invocation('getDaemonConfig'),
+  invocation('saveDaemonConfig', [jsonParameter('config')]),
 ]
 
 // ---------------------------------------------------------------------------
@@ -507,6 +539,28 @@ export default function apply(ctx) {
   const conn = new Connection(() => {}, mintCookie, configStore)
 
   const service = {
+    // ---- daemon supervision (settings card) ---------------------------------
+    // The plugin never touches the dsh process itself; it only edits the shared
+    // config the standalone supervisor (daemon.js) reads. `enabled` is the
+    // "守护进程服务" checkbox; the scripts are the lifecycle commands the
+    // supervisor will run on this machine.
+    async getDaemonConfig() {
+      return { ok: true, ...daemonSnapshot() }
+    },
+    async saveDaemonConfig(config) {
+      const dir = configDir()
+      const current = readDaemonConfig(dir)
+      const patch = config && typeof config === 'object' ? config : {}
+      const merged = {
+        ...current,
+        ...patch,
+        scripts: { ...current.scripts, ...(patch.scripts && typeof patch.scripts === 'object' ? patch.scripts : {}) },
+        child: { ...current.child, ...(patch.child && typeof patch.child === 'object' ? patch.child : {}) },
+      }
+      const saved = writeDaemonConfig(dir, merged)
+      console.log('[dsh-gateway-agent] daemon config saved enabled=' + saved.enabled + ' at=' + new Date().toISOString())
+      return { ok: true, saved: true, ...daemonSnapshot() }
+    },
     async status() {
       return { ok: true, ...conn.status() }
     },

@@ -38,6 +38,49 @@ export const DataKind = Object.freeze({
   TEXT: 2,
 })
 
+// --- daemon supervision (mirrors packages/protocol/src/daemon.js) ------------
+// Kept in sync by hand: this file is vendored so the plugin installs standalone
+// without a workspace dependency on dsh-gateway-protocol.
+
+/** Node connection roles: the plugin is `console`, the supervisor is `supervisor`. */
+export const NodeRole = Object.freeze({
+  CONSOLE: 'console',
+  SUPERVISOR: 'supervisor',
+})
+
+export const DaemonType = Object.freeze({
+  DAEMON_CONTROL: 'daemon_control',
+  DAEMON_RESULT: 'daemon_result',
+})
+
+export const DaemonAction = Object.freeze({
+  START: 'start',
+  STOP: 'stop',
+  RESTART: 'restart',
+})
+
+export const DAEMON_ACTIONS = Object.freeze([DaemonAction.START, DaemonAction.STOP, DaemonAction.RESTART])
+
+export const DaemonState = Object.freeze({
+  UNKNOWN: 'unknown',
+  STARTING: 'starting',
+  RUNNING: 'running',
+  STOPPED: 'stopped',
+  EXITED: 'exited',
+})
+
+export function isDaemonAction(value) {
+  return DAEMON_ACTIONS.includes(value)
+}
+
+export function normalizeRole(value) {
+  return value === NodeRole.SUPERVISOR ? NodeRole.SUPERVISOR : NodeRole.CONSOLE
+}
+
+export function normalizeDaemonState(value) {
+  return typeof value === 'string' && Object.values(DaemonState).includes(value) ? value : DaemonState.UNKNOWN
+}
+
 export function signChallenge(secret, nonce) {
   return createHmac('sha256', secret).update(nonce).digest('hex')
 }

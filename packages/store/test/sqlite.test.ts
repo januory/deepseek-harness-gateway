@@ -1,9 +1,12 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { rmSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import Database from 'better-sqlite3'
+import { drizzle } from 'drizzle-orm/better-sqlite3'
+import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { SqliteStore } from '../src/index.js'
 
 const files: string[] = []
@@ -192,6 +195,47 @@ describe('SqliteStore', () => {
     await store.close()
   })
 
+  // Daemon supervision: the portal must still be able to describe a machine
+  // whose supervisor is gone, so the last reported lifecycle state is durable.
+  it('persists daemon supervision state (migration 0004) across reopen', async () => {
+    const filename = tmpfile()
+    const store = new SqliteStore({ filename })
+    await store.open()
+    await store.upsertMachine({
+      id: 'm1',
+      name: 'supervised-box',
+      nodeKeyHash: 'h1',
+      status: 'approved',
+      configRev: 0,
+      createdAt: '2026-09-01T00:00:00Z',
+      daemonState: 'stopped',
+      daemonEnabled: true,
+    })
+    // A plain metadata heartbeat must not wipe the daemon columns.
+    const fetched = (await store.getMachine('m1'))!
+    await store.upsertMachine({ ...fetched, lastHeartbeatAt: '2026-09-01T00:00:05Z' })
+    await store.close()
+
+    const reopened = new SqliteStore({ filename })
+    await reopened.open()
+    const machine = await reopened.getMachine('m1')
+    expect(machine?.daemonState).toBe('stopped')
+    expect(machine?.daemonEnabled).toBe(true)
+    // A machine with no supervision reads back as undefined, not false/"unknown".
+    await reopened.upsertMachine({
+      id: 'm2',
+      name: 'plain-box',
+      nodeKeyHash: 'h2',
+      status: 'approved',
+      configRev: 0,
+      createdAt: '2026-09-01T00:00:00Z',
+    })
+    const plain = await reopened.getMachine('m2')
+    expect(plain?.daemonState).toBeUndefined()
+    expect(plain?.daemonEnabled).toBeFalsy()
+    await reopened.close()
+  })
+
   it('applies migration 0003 (audit_events.ts index) on fresh open', async () => {
     const filename = tmpfile()
     const store = new SqliteStore({ filename })
@@ -204,5 +248,44 @@ describe('SqliteStore', () => {
       .get() as { name: string } | undefined
     expect(row?.name).toBe('audit_events_ts_idx')
     db.close()
+  })
+
+  it('upgrades an existing pre-daemon database in place (migration 0004)', async () => {
+    const filename = tmpfile()
+    // Reach the pre-daemon schema by replaying the committed migrations through
+    // drizzle with a journal that stops at 0003...
+    const migrations = join(dirname(fileURLToPath(import.meta.url)), '..', 'drizzle')
+    const partial = mkdtempSync(join(tmpdir(), 'dshgw-migrations-'))
+    mkdirSync(join(partial, 'meta'), { recursive: true })
+    const journal = JSON.parse(readFileSync(join(migrations, 'meta', '_journal.json'), 'utf8')) as {
+      entries: Array<{ idx: number; tag: string }>
+    }
+    const kept = journal.entries.filter((e) => e.idx <= 3)
+    writeFileSync(join(partial, 'meta', '_journal.json'), JSON.stringify({ ...journal, entries: kept }))
+    for (const e of kept) copyFileSync(join(migrations, `${e.tag}.sql`), join(partial, `${e.tag}.sql`))
+
+    const legacyRaw = new Database(filename)
+    legacyRaw.pragma('journal_mode = WAL')
+    migrate(drizzle(legacyRaw), { migrationsFolder: partial })
+    const preColumns = (legacyRaw.prepare('PRAGMA table_info(machines)').all() as Array<{ name: string }>).map((c) => c.name)
+    expect(preColumns).not.toContain('daemon_state')
+    legacyRaw
+      .prepare(
+        "INSERT INTO machines (id, name, node_key_hash, status, config_rev, created_at) VALUES ('m1','old-box','h1','approved',0,'2026-09-01T00:00:00Z')",
+      )
+      .run()
+    legacyRaw.close()
+
+    // ...then let the real store open it: 0004 must apply in place.
+    const store = new SqliteStore({ filename })
+    await store.open()
+    const machine = await store.getMachine('m1')
+    expect(machine?.name).toBe('old-box')
+    expect(machine?.daemonState).toBeUndefined()
+    await store.upsertMachine({ ...machine!, daemonState: 'running', daemonEnabled: true })
+    expect((await store.getMachine('m1'))?.daemonState).toBe('running')
+    await store.close()
+
+    rmSync(partial, { recursive: true, force: true })
   })
 })

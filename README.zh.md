@@ -16,6 +16,7 @@
 - **身份与授权都在网关** —— 机器身份由网关签发，所有授权都在网关侧执行，而非客户机。
 - **零改动的数据面** —— 网关原样中继官方 dsh web UI（HTTP + WebSocket），无需 fork dsh。
 - **门户完整操控** —— 操作员在网关门户里直接操控被分配机器的 dsh WebUI。
+- **远程启停 dsh（可选）** —— 机器可启用独立守护进程，门户「机器目录」即可远程 启动 / 关闭 / 重启 该机器的 dsh。
 
 ## 工作原理
 
@@ -142,4 +143,5 @@ apps/web/                     # 门户前端（Vite + React）
 packages/protocol/            # 共享 wire 协议（纯 JS，零构建）
 packages/store/               # 持久化接缝（IStore）+ 领域类型
 plugins/dsh-gateway-agent/    # 客户机接入插件（出站 wss 桥接本机 dsh web）
+plugins/dsh-gateway-agent/service/  # 守护进程服务化样例（systemd/launchd/Windows 计划任务）
 ```

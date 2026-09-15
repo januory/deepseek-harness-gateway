@@ -1,9 +1,59 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
-import type { MachineView, PublicUser } from '../types'
+import type { DaemonState, MachineView, PublicUser } from '../types'
 import { Button, Card, Empty, Field, Modal, PageHeader, Spinner, StatusBadge, StatusDot, formatTime, shortId, useToast } from '../ui'
 
 type Filter = 'all' | 'approved' | 'pending' | 'revoked'
+
+/** Wording for the transient state: `starting` covers start, stop and restart. */
+function transientLabel(action?: string): string {
+  switch (action) {
+    case 'start':
+      return '启动中…'
+    case 'stop':
+      return '关闭中…'
+    case 'restart':
+      return '重启中…'
+    default:
+      return '处理中…'
+  }
+}
+
+/** dsh lifecycle label/colour as reported by the machine's own supervisor. */
+function daemonMeta(state: DaemonState, action?: string): { label: string; tone: 'ok' | 'warn' | 'bad' | 'muted' } {
+  switch (state) {
+    case 'running':
+      return { label: '运行中', tone: 'ok' }
+    case 'starting':
+      return { label: transientLabel(action), tone: 'warn' }
+    case 'stopped':
+      return { label: '已关闭', tone: 'muted' }
+    case 'exited':
+      return { label: '已退出', tone: 'bad' }
+    case 'unknown':
+      return { label: '状态未知', tone: 'warn' }
+    default:
+      return { label: '未接入守护', tone: 'muted' }
+  }
+}
+
+/** Daemon lifecycle badge. Renders nothing for machines without supervision. */
+function DaemonBadge({ m }: { m: MachineView }) {
+  if (!m.supervisorConnected && !m.daemonEnabled && !m.daemonState) return null
+  const meta = daemonMeta(m.daemonState, m.daemonAction)
+  const offline = !m.supervisorConnected
+  return (
+    <span className={`daemon-badge daemon-badge--${offline ? 'offline' : meta.tone}`} title={
+      offline
+        ? '守护进程未连接：无法远程启停 dsh，显示的是最后一次上报的状态'
+        : '由机器上的守护进程上报'
+    }>
+      <span className="daemon-badge__dot" />
+      {meta.label}
+      {offline ? ' ·离线' : ''}
+    </span>
+  )
+}
 
 export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenConsole: (m: MachineView) => void }) {
   const isAdmin = me.role !== 'user'
@@ -16,6 +66,7 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
   const [busy, setBusy] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<{ kind: 'revoke' | 'delete'; m: MachineView } | null>(null)
   const [edit, setEdit] = useState<{ m: MachineView; name: string } | null>(null)
+  const [daemonConfirm, setDaemonConfirm] = useState<{ action: 'start' | 'stop' | 'restart'; m: MachineView } | null>(null)
 
   const load = useCallback(async () => {
     setErr(null)
@@ -31,6 +82,16 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
     void load()
   }, [load])
 
+  // While an action is in flight the machine reports `starting`; poll a little
+  // faster so the badge settles quickly without a manual refresh.
+  useEffect(() => {
+    if (!machines) return
+    const pending = machines.some((m) => m.daemonState === 'starting')
+    if (!pending) return
+    const timer = setInterval(() => void load(), 2000)
+    return () => clearInterval(timer)
+  }, [machines, load])
+
   const visible = useMemo(() => {
     if (!machines) return []
     const q = query.trim().toLowerCase()
@@ -41,11 +102,11 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
     })
   }, [machines, filter, query])
 
-  async function run(m: MachineView, fn: () => Promise<unknown>) {
+  async function run(m: MachineView, fn: () => Promise<unknown>, okMessage = '操作成功') {
     setBusy(m.id)
     try {
       await fn()
-      toast('ok', '操作成功')
+      toast('ok', okMessage)
       await load()
     } catch (e) {
       toast('error', String((e as Error).message ?? e))
@@ -59,21 +120,70 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
     onOpenConsole(m)
   }
 
+  /** Daemon controls: only admins, only while a supervisor is connected. */
+  function renderDaemonActions(m: MachineView) {
+    if (!isAdmin || !m.supervisorConnected) return null
+    const disabled = busy === m.id
+    const running = m.daemonState === 'running' || m.daemonState === 'starting'
+    return (
+      <>
+        {!running && (
+          <Button
+            variant="default"
+            disabled={disabled}
+            title="通过机器上的守护进程启动 dsh"
+            onClick={() => void run(m, () => api.daemonStart(m.id), '已下发启动指令')}
+          >
+            启动
+          </Button>
+        )}
+        {running && (
+          <Button
+            variant="default"
+            disabled={disabled}
+            title="停止 dsh（守护进程仍在线，可再次启动）"
+            onClick={() => setDaemonConfirm({ action: 'stop', m })}
+          >
+            关闭
+          </Button>
+        )}
+        <Button
+          variant="default"
+          disabled={disabled}
+          title="重启 dsh"
+          onClick={() => setDaemonConfirm({ action: 'restart', m })}
+        >
+          重启
+        </Button>
+      </>
+    )
+  }
+
   function renderActions(m: MachineView) {
     return (
       <>
         {m.status === 'approved' && (
-          <>
-            <Button variant="primary" onClick={() => openConsole(m)}>
-              控制台
-            </Button>
-          </>
+          <Button
+            variant="primary"
+            disabled={!m.consoleConnected}
+            title={
+              m.consoleConnected
+                ? '打开该机器的 dsh 控制台'
+                : m.daemonState === 'starting'
+                  ? 'dsh 正在启动，连接建立后即可打开控制台'
+                  : '机器未连接（dsh 未运行或插件未连回网关）'
+            }
+            onClick={() => openConsole(m)}
+          >
+            控制台
+          </Button>
         )}
         {isAdmin && m.status === 'pending' && (
           <Button variant="primary" disabled={busy === m.id} onClick={() => void run(m, () => api.approveMachine(m.id))}>
             批准
           </Button>
         )}
+        {renderDaemonActions(m)}
         {isAdmin && (
           <Button variant="default" disabled={busy === m.id} onClick={() => setEdit({ m, name: m.name })}>
             编辑
@@ -137,6 +247,7 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
                     <th>状态</th>
                     <th>机器</th>
                     <th>版本</th>
+                    <th>dsh 生命周期</th>
                     <th>最后心跳</th>
                     <th style={{ textAlign: 'right' }}>操作</th>
                   </tr>
@@ -162,6 +273,9 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
                       {/* Same style as the heartbeat cell so both metadata columns
                           share one baseline (the mono 12.5px glyph sits ~1px off). */}
                       <td className="muted">{m.dshVersion || '—'}</td>
+                      <td className="muted">
+                        <DaemonBadge m={m} />
+                      </td>
                       <td className="muted">{formatTime(m.lastHeartbeatAt)}</td>
                       <td className="cell-actions">{renderActions(m)}</td>
                     </tr>
@@ -186,6 +300,7 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
                   </div>
                   <div className="machine-card__meta">
                     <span>版本 {m.dshVersion || '—'}</span>
+                    <DaemonBadge m={m} />
                     <span>最后心跳 {formatTime(m.lastHeartbeatAt)}</span>
                   </div>
                   <div className="machine-card__actions">{renderActions(m)}</div>
@@ -218,6 +333,40 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
             ) : (
               <>
                 确定删除机器 <strong>{confirm.m.name}</strong>（<span className="mono">{shortId(confirm.m.id)}</span>）？此操作不可撤销。
+              </>
+            )}
+          </p>
+        ) : null}
+      </Modal>
+
+      {/* Daemon lifecycle confirmation: stopping dsh kills remote consoles, so it
+          is not something to trigger with a stray click. */}
+      <Modal
+        open={daemonConfirm !== null}
+        title={daemonConfirm?.action === 'stop' ? '关闭 dsh' : '重启 dsh'}
+        confirmLabel={daemonConfirm?.action === 'stop' ? '关闭' : '重启'}
+        danger={daemonConfirm?.action === 'stop'}
+        onClose={() => setDaemonConfirm(null)}
+        onConfirm={() => {
+          if (!daemonConfirm) return
+          const { action, m } = daemonConfirm
+          setDaemonConfirm(null)
+          const call =
+            action === 'stop' ? () => api.daemonStop(m.id) : action === 'restart' ? () => api.daemonRestart(m.id) : () => api.daemonStart(m.id)
+          void run(m, call, action === 'stop' ? '已下发关闭指令' : '已下发重启指令')
+        }}
+      >
+        {daemonConfirm ? (
+          <p style={{ margin: 0 }}>
+            {daemonConfirm.action === 'stop' ? (
+              <>
+                确定关闭机器 <strong>{daemonConfirm.m.name}</strong>（<span className="mono">{shortId(daemonConfirm.m.id)}</span>）上的 dsh？
+                正在使用该机器控制台的人会立刻断开；守护进程仍在线，可以再次「启动」。
+              </>
+            ) : (
+              <>
+                确定重启机器 <strong>{daemonConfirm.m.name}</strong>（<span className="mono">{shortId(daemonConfirm.m.id)}</span>）上的 dsh？
+                正在进行的会话会短暂中断。
               </>
             )}
           </p>
@@ -266,6 +415,10 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
                 onChange={(e) => setEdit({ ...edit, name: e.target.value })}
               />
             </Field>
+            <div className="muted" style={{ fontSize: 12.5 }}>
+              守护进程：{edit.m.supervisorConnected ? `在线（${daemonMeta(edit.m.daemonState, edit.m.daemonAction).label}）` : '离线'} ·{' '}
+              {edit.m.daemonEnabled ? '服务已启用' : '服务未启用'}
+            </div>
           </div>
         ) : null}
       </Modal>

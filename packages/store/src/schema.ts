@@ -23,6 +23,13 @@ export const machines = sqliteTable('machines', {
   configRev: integer('config_rev').notNull().default(0),
   lastHeartbeatAt: text('last_heartbeat_at'),
   createdAt: text('created_at').notNull(),
+  // Daemon supervision: the last state reported by the machine's supervisor.
+  // Live truth is the supervisor socket; these columns only feed the portal when
+  // the supervisor is offline or the gateway restarted. `daemon_state` mirrors
+  // DaemonState (unknown|starting|running|stopped|exited); `daemon_enabled` is
+  // the `daemon.enabled` flag from the machine's own plugin config.
+  daemonState: text('daemon_state'),
+  daemonEnabled: integer('daemon_enabled', { mode: 'boolean' }).default(false),
 })
 
 export const assignments = sqliteTable(
