@@ -14,9 +14,10 @@
 // pretending the stop worked.
 
 import { spawn, execFile } from 'node:child_process'
-import { dirname } from 'node:path'
+import { openSync } from 'node:fs'
+import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { readDaemonRuntime } from './daemon-config.js'
+import { readDaemonConfig, readDaemonRuntime } from './daemon-config.js'
 
 /** The supervisor entry shipped next to this plugin, for link:, npm and workspace installs. */
 export const SUPERVISOR_ENTRY = fileURLToPath(new URL('./daemon.js', import.meta.url))
@@ -86,15 +87,33 @@ export function supervisorAlive(dir) {
 }
 
 /**
+ * Open the append-mode file a plugin-started supervisor writes its output to. Without
+ * it the supervisor's stdout/stderr would be discarded (`stdio: 'ignore'`) and a crash
+ * would leave no trace at all. The card's `logFile` wins; otherwise supervisor.log sits
+ * next to daemon.json.
+ */
+function openSupervisorLog(dir, logFile) {
+  const configured = String(logFile || '').trim()
+  const path = configured ? (isAbsolute(configured) ? configured : join(dir, configured)) : join(dir, 'supervisor.log')
+  try {
+    return { fd: openSync(path, 'a'), path }
+  } catch {
+    return null
+  }
+}
+
+/**
  * Start the supervisor unless one is already running. Detached on purpose: it has to
  * survive this dsh process.
  */
 export async function startSupervisor(dir, { timeoutMs = 10_000 } = {}) {
   if (await supervisorRunning(dir)) return { action: 'already-running', ok: true }
+  const log = openSupervisorLog(dir, readDaemonConfig(dir).logFile)
   try {
     const child = spawn(process.execPath, [SUPERVISOR_ENTRY], {
       detached: true,
-      stdio: 'ignore',
+      // Keep its output: a supervisor that dies on its own is otherwise invisible.
+      stdio: log ? ['ignore', log.fd, log.fd] : 'ignore',
       windowsHide: true,
       // The supervisor resolves its own config from DSH_HOME — hand it the same home
       // this plugin used, so a card on a non-default home still lines up.

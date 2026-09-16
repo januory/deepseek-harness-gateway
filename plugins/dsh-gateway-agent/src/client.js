@@ -274,6 +274,10 @@ window.__ModuleLoader__.load({
       // `supervisorPid` stays in daemon-state.json forever, so liveness decides:
       // the host reports whether that pid still exists (`supervisorAlive`).
       var supervised = !!(daemon.state && daemon.state.supervisorPid) && daemon.supervisorAlive !== false
+      // With no supervisor socket the state is unverifiable: showing the last reported
+      // 「运行中」 next to 「守护进程未运行」 reads like a contradiction, so the head falls
+      // back to 离线 — the same word the portal's machine catalog uses for this case.
+      var headMeta = supervised ? meta : { label: '离线', color: '#8b8f98' }
 
       function patch(fields) {
         setCfg(Object.assign({}, cfg || daemon.config || {}, fields))
@@ -360,18 +364,26 @@ window.__ModuleLoader__.load({
           createElement(
             'div',
             { style: S.statusHead },
-            createElement('span', { style: Object.assign({}, S.dot, { background: meta.color }) }),
-            createElement('strong', { style: { color: meta.color, fontSize: 13.5 } }, meta.label),
+            createElement('span', { style: Object.assign({}, S.dot, { background: headMeta.color }) }),
+            createElement('strong', { style: { color: headMeta.color, fontSize: 13.5 } }, headMeta.label),
             createElement(
               'span',
               { style: S.hint },
-              supervised ? '守护进程在线（pid ' + daemon.state.supervisorPid + '）' : '守护进程未运行 / 未接入',
+              supervised
+                ? '守护进程在线（pid ' + daemon.state.supervisorPid + '）'
+                : daemon.state && daemon.state.supervisorPid
+                  ? '守护进程未运行'
+                  : '守护进程未运行 / 未接入',
             ),
           ),
           createElement(
             'div',
             { style: S.kv },
-            kv('守护状态', daemon.state && daemon.state.state ? daemon.state.state : '—'),
+            // 整行文案与卡片其余部分统一用中文（运行中 / 已关闭 / 已退出 / 处理中…）：
+            // 守护进程不在时，daemon-state.json 里那个 running 只是历史值，此时就是「已停止」。
+            kv('守护状态', supervised
+              ? (daemon.state && daemon.state.state ? daemonMeta(daemon.state.state, daemon.state.lastAction).label : '—')
+              : '已停止'),
             kv('最近动作', daemon.state && daemon.state.lastAction ? daemon.state.lastAction + ' @ ' + timeText(daemon.state.lastActionAt) : '—'),
             kv('dsh 进程', daemon.state && daemon.state.pid ? String(daemon.state.pid) : '—'),
           ),
@@ -565,7 +577,15 @@ window.__ModuleLoader__.load({
       var setTab = _tab[1]
       var daemonStatus = status && status.daemon ? status.daemon : null
       var daemonState = daemonStatus && daemonStatus.state ? daemonStatus.state.state : ''
-      var daemonTabMeta = daemonState ? daemonMeta(daemonState) : null
+      // 页签上的小圆点跟状态卡片用同一套判断：守护进程不在时 daemon-state.json 里那个
+      // running 只是历史值，圆点必须是灰的「离线」，不能一直绿。
+      var daemonTabMeta = !daemonStatus
+        ? null
+        : !(daemonStatus.state && daemonStatus.state.supervisorPid) || daemonStatus.supervisorAlive === false
+          ? { label: '离线', color: '#8b8f98' }
+          : daemonState
+            ? daemonMeta(daemonState, daemonStatus.state.lastAction)
+            : null
 
       function tabButton(id, label, badge) {
         var active = tab === id
@@ -589,7 +609,7 @@ window.__ModuleLoader__.load({
         createElement(
           'div',
           { style: S.tabs, role: 'tablist' },
-          tabButton('gateway', '网关接入', null),
+          tabButton('gateway', '网关接入', meta),
           daemonStatus ? tabButton('daemon', '守护进程服务', daemonTabMeta) : null,
         ),
         createElement(
