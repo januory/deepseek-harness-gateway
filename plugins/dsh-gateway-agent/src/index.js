@@ -28,6 +28,7 @@ import { configDir, createConfigStore, sanitizeConfig, CLIENT_FIELDS } from './c
 import { nextBackoff, backoffDelay } from './backoff.js'
 import { loopbackSameOriginHeaders } from './origin.js'
 import { readDaemonConfig, writeDaemonConfig, readDaemonRuntime } from './daemon-config.js'
+import { applySupervision, supervisorAlive } from './supervisor-control.js'
 
 export const name = 'dsh-gateway-agent'
 
@@ -92,7 +93,9 @@ function daemonSnapshot() {
   // it without guessing paths.
   const entry = fileURLToPath(new URL('./daemon.js', import.meta.url))
   const supervisorCommand = `node "${entry}"`
-  return { enabled: cfg.enabled === true, config: cfg, supervisor, supervisorCommand, state }
+  // The state file keeps the last supervisor pid forever; the card must not claim
+  // "在线" from a stale pid after the operator stopped it.
+  return { enabled: cfg.enabled === true, config: cfg, supervisor, supervisorCommand, state, supervisorAlive: supervisorAlive(dir) }
 }
 
 // Outbound connection + data-plane bridge.
@@ -559,7 +562,20 @@ export default function apply(ctx) {
       }
       const saved = writeDaemonConfig(dir, merged)
       console.log('[dsh-gateway-agent] daemon config saved enabled=' + saved.enabled + ' at=' + new Date().toISOString())
-      return { ok: true, saved: true, ...daemonSnapshot() }
+      // Saving acts on the checkbox: ticked starts the standalone supervisor, unticked
+      // stops it. Best-effort — a failure here must not lose the config the operator
+      // just saved, so the outcome is reported instead of thrown.
+      let control
+      try {
+        control = await applySupervision(dir, saved.enabled === true)
+        console.log('[dsh-gateway-agent] supervisor ' + control.action + (control.detail ? ' (' + control.detail + ')' : ''))
+      } catch (e) {
+        control = { action: 'failed', ok: false, detail: String((e && e.message) || e) }
+      }
+      // NOTE: the snapshot carries a legacy string field also called `supervisor` (the
+      // 'daemon.js' hint), and spreading it would overwrite this result — hence the
+      // distinct name.
+      return { ok: true, saved: true, supervisorControl: control, ...daemonSnapshot() }
     },
     async status() {
       return { ok: true, ...conn.status() }

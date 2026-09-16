@@ -30,9 +30,10 @@
 // Only dependency is `ws`, which the plugin already depends on.
 
 import { spawn } from 'node:child_process'
+import { openSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { hostname } from 'node:os'
-import { dirname } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import process from 'node:process'
 import {
@@ -203,6 +204,23 @@ export function runScript(script, shell, cwd, timeoutMs = 30_000) {
 }
 
 /**
+ * Open the append-mode log the supervised dsh writes to. A FILE, not a pipe: when this
+ * supervisor exits (stop, restart, upgrade) a pipe's read end closes and the surviving
+ * dsh dies on its next stdout write (EPIPE) — and stopping the supervisor must never
+ * take dsh down. `logFile` is the operator's setting; otherwise dsh.log is written next
+ * to daemon.json. Returns null when the file cannot be opened.
+ */
+function openChildLog(config, dir) {
+  const configured = String((config && config.logFile) || '').trim()
+  const path = configured ? (isAbsolute(configured) ? configured : join(dir, configured)) : join(dir, 'dsh.log')
+  try {
+    return { fd: openSync(path, 'a'), path }
+  } catch {
+    return null
+  }
+}
+
+/**
  * Run the optional liveness probe. Returns true/false, or null when no probe is
  * configured (the caller then trusts its own bookkeeping).
  */
@@ -351,15 +369,21 @@ export class Supervisor {
       const argv = splitCommand(expandCommand(this.config.child.command, vars))
       if (argv.length === 0) throw new Error('child command is empty')
       this.log.info(`starting child: ${argv.join(' ')}`)
+      // dsh's output goes to a FILE, not to pipes owned by this supervisor. With
+      // pipes, a supervisor stop/restart closes the read end and the surviving dsh
+      // dies on its next write (EPIPE) — which is exactly what must never happen:
+      // stopping the supervisor must not take dsh down with it. `logFile` is the
+      // operator's choice; otherwise dsh.log sits next to daemon.json.
+      const out = openChildLog(this.config, this.dir)
       const child = spawn(argv[0], argv.slice(1), {
         cwd: this.config.child.cwd || undefined,
         env: { ...process.env, ...this.config.child.env },
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: out ? ['ignore', out.fd, out.fd] : ['ignore', 'ignore', 'ignore'],
         windowsHide: true,
         detached: false,
       })
-      child.stdout?.on('data', (c) => this.log.info(`dsh: ${String(c).trimEnd()}`))
-      child.stderr?.on('data', (c) => this.log.error(`dsh: ${String(c).trimEnd()}`))
+      if (out) this.log.info(`dsh output → ${out.path}`)
+      else this.log.error('cannot open a log file for dsh; its output is discarded')
       child.on('exit', (code, signal) => this.onChildExit(code, signal))
       this.child = child
       this.startedAt = new Date().toISOString()

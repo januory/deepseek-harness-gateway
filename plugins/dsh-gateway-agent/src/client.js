@@ -271,7 +271,9 @@ window.__ModuleLoader__.load({
       var enabled = cfg ? cfg.enabled === true : daemon.enabled === true
       var isWin = /^win/i.test(String((typeof navigator !== 'undefined' && navigator.platform) || ''))
       var meta = daemonMeta(daemon.state ? daemon.state.state : '')
-      var supervised = !!(daemon.state && daemon.state.supervisorPid)
+      // `supervisorPid` stays in daemon-state.json forever, so liveness decides:
+      // the host reports whether that pid still exists (`supervisorAlive`).
+      var supervised = !!(daemon.state && daemon.state.supervisorPid) && daemon.supervisorAlive !== false
 
       function patch(fields) {
         setCfg(Object.assign({}, cfg || daemon.config || {}, fields))
@@ -281,6 +283,19 @@ window.__ModuleLoader__.load({
       }
       function patchChild(fields) {
         patch({ child: Object.assign({}, child, fields) })
+      }
+
+      // 保存会按勾选状态启停守护进程（后端做），结果如实回显——包括「服务管理器又把它拉起来了」
+      // 和「拒绝杀掉不是本插件的进程」这两种情况。
+      function saveNotice(wantEnabled, sup) {
+        var action = sup && sup.action
+        if (!action) return wantEnabled ? '已保存。守护进程会按新脚本执行启动/停止/重启。' : '已保存：守护进程服务已关闭。'
+        if (action === 'started') return '已保存：守护进程已启动' + (sup.detail ? '（' + sup.detail + '）' : '') + '。'
+        if (action === 'already-running') return '已保存：守护进程此前已在运行。'
+        if (action === 'stopped') return '已保存：守护进程已停止。' + (sup.restartedByService ? ' 注意：它随即又被服务管理器拉起——要真正关掉请用 systemctl / Stop-ScheduledTask 停掉那个服务。' : '')
+        if (action === 'not-running') return '已保存：守护进程本来就没有运行。'
+        if (action === 'refused') return '已保存，但没有停止守护进程：' + (sup.detail || '当前记录的进程不是本插件的守护进程') + '。'
+        return '已保存，但启停守护进程失败：' + (sup.detail || action) + '。装成系统服务（README「启动 / 关闭守护进程」）更可靠。'
       }
 
       function save() {
@@ -294,13 +309,13 @@ window.__ModuleLoader__.load({
           child: child,
         })
         try {
-          withTimeout(Promise.resolve(remoteCall(remote, 'saveDaemonConfig', [body])), 15000).then(
+          withTimeout(Promise.resolve(remoteCall(remote, 'saveDaemonConfig', [body])), 20000).then(
             function (r) {
               setBusy(false)
               var v = unwrap(r)
               if (v.error) { setError(v.error); return }
               if (v.config) setCfg(v.config)
-              setNotice(enabled ? '已保存。守护进程会按新脚本执行启动/停止/重启。' : '已保存：守护进程服务已关闭。')
+              setNotice(saveNotice(enabled, v.supervisorControl))
             },
             function (e) { setBusy(false); setError(String(e && e.message ? e.message : e)) },
           )
@@ -322,6 +337,11 @@ window.__ModuleLoader__.load({
           'p',
           { style: S.desc },
           '勾选后，本机由一个独立的守护进程（supervisor）托管 dsh 的启动/停止/重启，并由网关「机器目录」远程操作。守护进程不是 dsh 的子进程：dsh 被关闭后它仍然在线，因此可以被重新启动。',
+        ),
+        createElement(
+          'p',
+          { style: S.hint },
+          '点「保存守护设置」会按勾选状态启动 / 停止这个守护进程（勾上就启动，取消就停掉）。要开机、重启后自动常驻，请照 README「启动 / 关闭守护进程」把它装成系统服务。',
         ),
         createElement(
           'label',
