@@ -49,24 +49,9 @@ See the [project README](../../README.md) for the full architecture.
 
 ## Daemon supervision (optional, off by default)
 
-Tick **Settings → 网关接入 → 守护进程服务** and the machine's dsh lifecycle
+Tick **Settings → 网关接入 → 守护进程服务** and the machine’s dsh lifecycle
 (start / stop / restart) is owned by a standalone supervisor process, so the
-gateway portal's machine catalog can control it remotely.
-
-- The plugin itself lives inside dsh and therefore **cannot** restart it, so this
-  step needs the supervisor running as its own service. Ready-made samples live
-  in [`service/`](service/) (systemd / launchd / Windows scheduled task).
-- The settings card shows the exact command that starts the supervisor on this
-  machine, so you can service-ize it without guessing paths.
-- The four commands shown and editable in the settings card (start / stop /
-  restart / liveness probe) are the *entire* set of commands the gateway will
-  run. **Stopping means stopped, and a crash stays visible**: a dsh that dies on
-  its own is reported as `exited` and is *not* restarted automatically — click
-  Start in the portal. (A supervisor restart, e.g. after a reboot, still brings
-  dsh back up when the liveness probe says it is down.)
-- Config lives in `$DSH_HOME/dsh-gateway-agent/daemon.json`; the supervisor's
-  runtime state is written to `daemon-state.json` in the same directory and is
-  what the settings card displays.
+gateway portal’s machine catalog can control it remotely.
 
 Leave it unticked if you do not need remote lifecycle control — nothing else
 changes.

@@ -52,14 +52,4 @@ dsh plugin --profile web add ./plugins/dsh-gateway-agent
 勾选 **设置 → 网关接入 → 守护进程服务** 后，本机由独立的 supervisor 进程托管 dsh 的
 启动 / 停止 / 重启，网关门户的「机器目录」即可远程操作该机器。
 
-- 插件本身跑在 dsh 里，**无法**重启 dsh——所以这一步需要把 supervisor 服务化常驻。
-  现成样例见 [`service/`](service/)（systemd / launchd / Windows 计划任务）。
-- 设置卡会把 supervisor 的确切启动命令显示出来，供你直接做成系统服务。
-- 设置卡里展示并可修改的四条命令（启动 / 停止 / 重启 / 状态探测）就是网关将会执行的
-  全部内容；**关闭就是关闭，崩溃也如实暴露**：dsh 意外退出只标成「已退出」，不会自动
-  拉起，需要在机器目录点「启动」。（supervisor 自身重启或机器重启时，仍会按状态探测
-  自动把 dsh 拉起。）
-- 相关配置存放在 `$DSH_HOME/dsh-gateway-agent/daemon.json`；supervisor 的运行时状态写在
-  同目录 `daemon-state.json`，设置卡据此显示状态。
-
 若不需要远程启停 dsh，保持不勾选即可，其余功能不受影响。

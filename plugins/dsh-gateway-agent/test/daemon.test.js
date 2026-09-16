@@ -6,7 +6,7 @@
 // non-zero path is exercised through a command that really fails.
 // Run: node test/daemon.test.js
 
-import { expandCommand, splitCommand, runScript, probeRunning, shellCommand, Supervisor } from '../src/daemon.js'
+import { expandCommand, splitCommand, runScript, probeRunning, Supervisor } from '../src/daemon.js'
 
 const WIN = process.platform === 'win32'
 const SHELL = WIN ? 'cmd' : 'sh'
@@ -47,26 +47,51 @@ check(bad.code !== 0, 'a failing script reports a non-zero code instead of throw
 const empty = await runScript('', SHELL)
 check(empty.skipped === true && empty.code === 0, 'an empty script is skipped, not spawned')
 
-// ---- shellCommand: cmd must receive the script verbatim -----------------------
-// Regression: Node's default argv quoting turned the quoted helper path in every
-// Windows default script into `\"…\"`, cmd kept the backslash, and PowerShell died
-// with "the -File parameter specifies an invalid path".
-{
-  const winScript = 'powershell -NoProfile -File "C:\\Program Files\\dsh\\dsh-lifecycle.ps1" start 3080'
-  const cmd = shellCommand(winScript, 'cmd')
-  check(cmd.args.length === 4 && cmd.args[0] === '/d' && cmd.args[2] === '/c', 'cmd runs the script through /d /s /c')
-  check(cmd.args[3] === winScript, 'cmd receives the script untouched, quotes included')
-  check(cmd.options.windowsVerbatimArguments === true, 'cmd spawns verbatim so embedded quotes survive')
-  const sh = shellCommand('echo hi', 'sh')
-  check(sh.file === 'sh' && sh.args.join('|') === '-c|echo hi', 'POSIX still runs through -c')
-  check(!sh.options.windowsVerbatimArguments, 'POSIX keeps the default quoting behaviour')
-}
-
 check((await probeRunning({ status: '' }, {}, undefined)) === null, 'no probe configured yields null')
 check((await probeRunning({}, {}, undefined)) === null, 'missing probe config yields null')
 check((await probeRunning({ shell: SHELL, status: 'echo up' }, {}, undefined)) === true, 'a probe that succeeds means running')
 check((await probeRunning({ shell: SHELL, status: 'this-command-does-not-exist-xyz' }, {}, undefined)) === false, 'a probe that fails means not running')
 
+// Windows: the cmd layer must not re-escape the quotes inside a configured
+// script. The shipped Windows defaults wrap the helper path in quotes, and the
+// old spawn(cmd, ['/d','/s','/c', script]) turned that into `\"C:\...\"`, which
+// cmd does not unescape: `powershell -File` then failed with "invalid characters
+// in path", so status/start/stop all failed on a plain Windows install. The temp
+// dir deliberately contains a space.
+if (WIN) {
+  const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const dir = mkdtempSync(join(tmpdir(), 'dshgw quote test-'))
+  const probe = join(dir, 'probe.ps1')
+  writeFileSync(probe, 'Write-Output quoted-ok\r\n')
+  const quoted = await runScript(`powershell -NoProfile -ExecutionPolicy Bypass -File "${probe}"`, SHELL)
+  check(quoted.code === 0 && quoted.stdout.includes('quoted-ok'), 'cmd: a quoted -File path survives the cmd layer')
+  rmSync(dir, { recursive: true, force: true })
+}
+// ---- start() never duplicates a dsh that is already up ----------------------
+// The probe is the arbiter: a hand-started dsh (or one this supervisor no longer
+// owns) must make start() answer `running` instead of spawning a second instance
+// that can only lose the port race.
+{
+  const { mkdtempSync, rmSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const { writeDaemonConfig } = await import('../src/daemon-config.js')
+  const quiet = { info() {}, error() {}, warn() {} }
+  const dir = mkdtempSync(join(tmpdir(), 'dshgw-already-up-'))
+  writeDaemonConfig(dir, {
+    enabled: true,
+    child: { command: `${process.execPath} -e "setTimeout(() => {}, 30000)"`, cwd: dir, env: {} },
+    // Always succeeds: "dsh is up, in someone else's hands".
+    scripts: { shell: SHELL, start: '', stop: '', restart: '', status: 'node -e "process.exit(0)"' },
+  })
+  const sup = new Supervisor({ dir, store: { read: () => ({ dshPort: 3998 }) }, logger: quiet })
+  const state = await sup.start()
+  check(state === 'running', 'start() answers `running` when the probe says dsh is already up')
+  check(sup.child === null, 'start() must not duplicate a hand-started dsh')
+  rmSync(dir, { recursive: true, force: true })
+}
 // ---- readiness: spawned ≠ ready -------------------------------------------------
 // `start` must not answer `running` while dsh is still booting: the portal would
 // then offer a console whose first request answers
@@ -101,10 +126,16 @@ if (WIN) {
   check(sup.state === 'stopped', 'stop() reports `stopped` after the child exits')
 
   // (2) child that dies at once ⇒ exited, never a false `running`.
+  // A *fresh* sentinel: `start()` now asks the probe first and answers `running`
+  // when dsh is already up, so reusing the (already true) sentinel from (1) would
+  // short-circuit before the child is ever spawned.
+  const sentinel2 = join(dir, 'up-2')
   writeDaemonConfig(dir, {
     enabled: true,
     child: { command: 'node -e "process.exit(3)"', cwd: dir, env: {} },
-    scripts,
+    scripts: Object.assign({}, scripts, {
+      status: `node -e "process.exit(require('fs').existsSync('${sentinel2}')?0:1)"`,
+    }),
   })
   const sup2 = new Supervisor({ dir, store, logger: quiet })
   const second = await sup2.start()

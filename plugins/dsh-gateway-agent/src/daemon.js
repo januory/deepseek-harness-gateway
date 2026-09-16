@@ -144,25 +144,6 @@ export function splitCommand(command) {
 }
 
 /**
- * Build the spawn triple for a lifecycle script (exported so tests can assert it
- * without a Windows box).
- *
- * `cmd` must receive the script EXACTLY as written. Node's default argv quoting
- * escapes the quotes inside it (`"…"` → `\"…\"`) and cmd does not understand
- * `\"`, so PowerShell ends up with `-File \"C:\…\dsh-lifecycle.ps1"` and fails
- * with "the -File parameter specifies an invalid path" — which is exactly what
- * every default Windows script (they all embed a quoted helper path) hit.
- */
-export function shellCommand(script, shell) {
-  const useCmd = shell === 'cmd'
-  return {
-    file: useCmd ? process.env.ComSpec || 'cmd.exe' : shell || 'sh',
-    args: useCmd ? ['/d', '/s', '/c', script] : ['-c', script],
-    options: useCmd ? { windowsVerbatimArguments: true } : {},
-  }
-}
-
-/**
  * Run a configured lifecycle script through the shell.
  * Resolves { code, stdout, stderr, skipped }; never throws on a non-zero exit.
  */
@@ -172,10 +153,23 @@ export function runScript(script, shell, cwd, timeoutMs = 30_000) {
       resolve({ code: 0, stdout: '', stderr: '', skipped: true })
       return
     }
-    const { file, args, options } = shellCommand(script, shell)
+    const useCmd = shell === 'cmd'
+    const file = useCmd ? process.env.ComSpec || 'cmd.exe' : shell || 'sh'
+    const args = useCmd ? ['/d', '/s', '/c', script] : ['-c', script]
     let child
     try {
-      child = spawn(file, args, Object.assign({ cwd: cwd || undefined, windowsHide: true }, options))
+      child = spawn(file, args, {
+        cwd: cwd || undefined,
+        windowsHide: true,
+        // cmd.exe does not understand the MSVCRT \" escaping Node applies to a
+        // quoted argv element: with /d /s /c the script reached PowerShell as
+        // \"C:\path\helper.ps1\", and -File then failed with "the path has
+        // invalid characters". Every shipped Windows default script quotes that
+        // path, so the status probe and start/stop all failed on plain installs
+        // (measured: exit 0xFFFD0000). The script IS a command line already -
+        // hand it over verbatim instead of re-escaping it.
+        windowsVerbatimArguments: useCmd,
+      })
     } catch (e) {
       resolve({ code: -1, stdout: '', stderr: String((e && e.message) || e) })
       return
@@ -340,6 +334,15 @@ export class Supervisor {
     // Already running — or still booting from a previous start, in which case the
     // in-flight readiness wait owns the transition and we must not claim `running`.
     if (this.isChildRunning()) return this.state
+    // A dsh that is already up but is NOT our child (the operator started it by
+    // hand, or the supervisor was restarted while it ran) must not be duplicated:
+    // a second instance only loses the port race and surfaces as `exited`. The
+    // configured liveness probe is the arbiter, mirroring the shipped lifecycle
+    // helper's "already running" answer.
+    if ((await probeRunning(this.config.scripts, this.vars(), this.config.child.cwd)) === true) {
+      this.setState(DaemonState.RUNNING, null)
+      return this.state
+    }
     const token = ++this.startToken
     this.setState(DaemonState.STARTING, null)
     const vars = this.vars()
