@@ -30,7 +30,7 @@
 // Only dependency is `ws`, which the plugin already depends on.
 
 import { spawn } from 'node:child_process'
-import { openSync } from 'node:fs'
+import { openSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { hostname } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
@@ -820,7 +820,12 @@ const isDirectRun = (() => {
   const entry = process.argv[1]
   if (!entry) return false
   try {
-    return import.meta.url === pathToFileURL(entry).href
+    // Compare REAL paths. Under a `link:`/junction install (pnpm links a local
+    // plugin checkout) Node resolves import.meta.url to the file behind the
+    // junction while argv[1] keeps the junction path - the raw compare never
+    // matched, main() was skipped and the process exited 0 without logging a
+    // single line, so a linked install made the supervisor silently do nothing.
+    return import.meta.url === pathToFileURL(realpathSync(entry)).href
   } catch {
     return false
   }
