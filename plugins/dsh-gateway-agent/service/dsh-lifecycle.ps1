@@ -153,13 +153,27 @@ switch ($Action) {
       exit 0
     }
     if (-not (Get-Command dsh -ErrorAction SilentlyContinue)) {
-      Write-Host 'dsh: the "dsh" command is not on PATH - set the child command (settings card: child.command) or your own start script'
-      Write-Host 'dsh: for a checkout install set child.command = node --import tsx/esm apps/cli/src/bin.ts web --port {port} and child.cwd = the checkout root'
+      Write-Host 'dsh: the "dsh" command is not on PATH - give the start script (scripts.start) your own command, or put dsh on PATH'
+      Write-Host 'dsh: for a checkout install use scripts.start = node --import tsx/esm apps/cli/src/bin.ts web --no-open --port {port} with child.cwd = the checkout root'
       exit 1
     }
     Write-Host "dsh: starting (dsh web --port $Port)"
-    # `start` detaches so the supervisor is not the parent of dsh.
-    Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', "start `"dsh`" /b dsh web --port $Port" -WindowStyle Hidden
+    # Start dsh OUTSIDE this process tree, through the WMI service. Windows Task
+    # Scheduler runs a task's action inside a job object and kills that whole tree
+    # when the task stops (or when the action process exits), so a dsh created as an
+    # ordinary child - `start`, Start-Process, spawn() - is killed together with the
+    # supervisor. That breaks the supervisor's one promise: stopping supervision
+    # must never stop dsh. Win32_Process.Create puts the new process outside the
+    # job (verified on Windows 10/11, and in an S4U task session). cmd is the
+    # launcher so a .cmd/.ps1 `dsh` shim on PATH still resolves.
+    $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+      CommandLine      = "cmd /c dsh web --port $Port"
+      CurrentDirectory = (Get-Location).Path
+    }
+    if ($created.ReturnValue -ne 0) {
+      Write-Host "dsh: could not start it (Win32_Process.Create returned $($created.ReturnValue))"
+      exit 1
+    }
     exit 0
   }
 }
