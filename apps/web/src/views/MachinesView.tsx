@@ -270,7 +270,7 @@ export function MachinesView({ me, onOpenConsole }: { me: PublicUser; onOpenCons
                     <th>状态</th>
                     <th>机器</th>
                     <th>版本</th>
-                    <th>dsh 生命周期</th>
+                    <th>守护进程</th>
                     <th>最后心跳</th>
                     <th style={{ textAlign: 'right' }}>操作</th>
                   </tr>
