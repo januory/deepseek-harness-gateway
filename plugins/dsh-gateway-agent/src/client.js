@@ -12,10 +12,14 @@
 var PACKAGE = '@januory/dsh-gateway-agent'
 var NAMESPACE = 'gatewayAgent'
 
+// 身份 JSON 边界 codec：新版 DSH 的 typert 用 create() 工厂校验 strict codec
+// （旧版读 schema）；两字段同源并存，同一份产物在新旧宿主上都能挂载。
+var JSON_SCHEMA = Object.freeze({ parse: function (value) { return value } })
 var JSON_CODEC = Object.freeze({
   mode: 'strict',
   typeSymbol: 'JsonValue',
-  schema: Object.freeze({ parse: function (value) { return value } }),
+  create: function () { return JSON_SCHEMA },
+  schema: JSON_SCHEMA,
 })
 
 function jsonParameter(paramName) {

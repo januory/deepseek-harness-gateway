@@ -1,6 +1,6 @@
 {
   "name": "@januory/dsh-gateway-agent",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "description": "客户机接入插件：出站连接 deepseek-harness-gateway，桥接本机 dsh web 供门户完整操控。",
   "repository": {
@@ -30,7 +30,7 @@
   "scripts": {
     "build": "node -e \"console.log('dsh-gateway-agent: no build (plain JS)')\"",
     "supervisor": "node src/daemon.js",
-    "test": "node test/secrets.test.js && node test/backoff.test.js && node test/origin.test.js && node test/daemon-config.test.js && node test/daemon.test.js && node test/daemon-rpc.test.js && node test/supervisor-control.test.js && node test/direct-run.test.js && node test/iife-isolation.mjs",
+    "test": "node test/secrets.test.js && node test/backoff.test.js && node test/origin.test.js && node test/daemon-config.test.js && node test/daemon.test.js && node test/daemon-rpc.test.js && node test/typert-codec.test.js && node test/supervisor-control.test.js && node test/direct-run.test.js && node test/iife-isolation.mjs",
     "typecheck": "node -e \"console.log('dsh-gateway-agent: plain JS, typecheck skipped')\""
   },
   "dsh": {

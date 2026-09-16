@@ -40,9 +40,32 @@ console.log('$mount package =', mountArg.package, '(should be @januory/dsh-gatew
 console.log('$mount namespace =', mountArg.descriptors[0].namespace, '(should be gatewayAgent)')
 console.log('$mount method[0] =', mountArg.descriptors[0].method, '(should be status)')
 
+// Codec guard: $mount validates descriptors client-side, and a strict codec
+// without create() fails with "strict codec has no create() factory" (the
+// settings card then shows "Remote 命名空间挂载失败"). Every captured codec must
+// satisfy the current host contract and keep the legacy `schema` field.
+let codecsOk = true
+for (const descriptor of mountArg.descriptors) {
+  const codecs = [descriptor.result, ...descriptor.parameters.map((p) => p.codec)]
+  for (const codec of codecs) {
+    const schema = typeof codec.create === 'function' ? codec.create() : null
+    if (
+      codec.mode !== 'strict' ||
+      typeof codec.create !== 'function' ||
+      !schema || typeof schema.parse !== 'function' ||
+      typeof codec.schema?.parse !== 'function'
+    ) {
+      console.log('FAIL: codec is not mountable:', descriptor.method, JSON.stringify(Object.keys(codec)))
+      codecsOk = false
+    }
+  }
+}
+console.log('codecs expose create():', codecsOk, '(should be true)')
+
 const ok =
   mountArg.package === '@januory/dsh-gateway-agent' &&
   mountArg.descriptors[0].namespace === 'gatewayAgent' &&
-  mountArg.descriptors[0].method === 'status'
+  mountArg.descriptors[0].method === 'status' &&
+  codecsOk
 console.log(ok ? 'PASS: variables are correctly isolated' : 'FAIL: variables still collide')
 process.exit(ok ? 0 : 1)

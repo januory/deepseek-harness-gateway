@@ -35,7 +35,7 @@ export const name = 'dsh-gateway-agent'
 const PACKAGE = '@januory/dsh-gateway-agent'
 const NAMESPACE = 'gatewayAgent'
 // Keep in sync with package.json "version".
-const AGENT_VERSION = '0.2.1'
+const AGENT_VERSION = '0.2.2'
 
 // Verbose per-request relay logging (recv / forward / upstream) is opt-in via
 // DSH_AGENT_DEBUG=1; normal operation stays quiet.
@@ -487,10 +487,16 @@ class Connection {
 // ---------------------------------------------------------------------------
 // Remote contract (mirrors src/client.js — must match).
 // ---------------------------------------------------------------------------
+// Identity JSON boundary codec. DSH's typert registry validates a strict codec
+// through `create()` (→ TypertSchema.parse) since the schema-materialization
+// change; older hosts read `schema` directly. Both fields carry the same
+// schema so one artifact works on either host. Keep in sync with client.js.
+const JSON_SCHEMA = Object.freeze({ parse(value) { return value } })
 const JSON_CODEC = Object.freeze({
   mode: 'strict',
   typeSymbol: 'JsonValue',
-  schema: Object.freeze({ parse(value) { return value } }),
+  create: () => JSON_SCHEMA,
+  schema: JSON_SCHEMA,
 })
 
 function jsonParameter(paramName) {
