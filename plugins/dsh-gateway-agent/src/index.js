@@ -7,7 +7,9 @@
 // 铁律（参照 dsh-remote-workspaces）：不 import @deepseek-ai/* 内部包。
 
 import http from 'node:http'
+import { existsSync } from 'node:fs'
 import { hostname } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import WebSocket from 'ws'
 import {
@@ -35,7 +37,7 @@ export const name = 'dsh-gateway-agent'
 const PACKAGE = '@januory/dsh-gateway-agent'
 const NAMESPACE = 'gatewayAgent'
 // Keep in sync with package.json "version".
-const AGENT_VERSION = '0.2.2'
+const AGENT_VERSION = '0.2.3'
 
 // Verbose per-request relay logging (recv / forward / upstream) is opt-in via
 // DSH_AGENT_DEBUG=1; normal operation stays quiet.
@@ -90,9 +92,13 @@ function daemonSnapshot() {
   // The exact command that starts the supervisor on this machine. Derived from
   // this module's own location so it is correct for a link:, npm or workspace
   // install — the settings card shows it verbatim so the operator can service-ize
-  // it without guessing paths.
+  // it without guessing paths. NODE IS ABSOLUTE on purpose: the command is meant
+  // to be pasted into a launchd plist / systemd unit / scheduled task, and
+  // launchd's PATH (/usr/bin:/bin:/usr/sbin:/sbin) cannot find a Homebrew or nvm
+  // node at all — `node ...` there fails with "env: node: No such file or
+  // directory" and the supervisor never starts.
   const entry = fileURLToPath(new URL('./daemon.js', import.meta.url))
-  const supervisorCommand = `node "${entry}"`
+  const supervisorCommand = `"${process.execPath}" "${entry}"`
   // The state file keeps the last supervisor pid forever; the card must not claim
   // "在线" from a stale pid after the operator stopped it.
   return { enabled: cfg.enabled === true, config: cfg, supervisor, supervisorCommand, state, supervisorAlive: supervisorAlive(dir) }
@@ -565,6 +571,20 @@ export default function apply(ctx) {
         ...patch,
         scripts: { ...current.scripts, ...(patch.scripts && typeof patch.scripts === 'object' ? patch.scripts : {}) },
         child: { ...current.child, ...(patch.child && typeof patch.child === 'object' ? patch.child : {}) },
+      }
+      // A source checkout has no global `dsh`: the lifecycle helper starts the
+      // checkout's own entry (apps/cli/src/bin.ts) and resolves `tsx` from its
+      // working directory. Capture the directory THIS dsh was launched from when
+      // the operator left child.cwd empty -- a supervisor started by launchd or
+      // Task Scheduler runs with a different cwd and could not find the checkout.
+      if (!merged.child.cwd) {
+        const cwd = process.cwd()
+        if (
+          existsSync(join(cwd, 'apps', 'cli', 'src', 'bin.ts')) ||
+          existsSync(join(cwd, 'apps', 'cli', 'lib', 'bin.js'))
+        ) {
+          merged.child.cwd = cwd
+        }
       }
       const saved = writeDaemonConfig(dir, merged)
       console.log('[dsh-gateway-agent] daemon config saved enabled=' + saved.enabled + ' at=' + new Date().toISOString())

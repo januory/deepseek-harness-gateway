@@ -40,20 +40,17 @@ export const DEFAULT_STOP_TIMEOUT_MS = 10_000
  * port), `{home}` (dsh home, usually `$DSH_HOME`), `{dshHome}` (same value),
  * `{pid}` (managed child pid, empty in script mode).
  *
- * The Windows defaults match dsh BY COMMAND LINE and explicitly exclude the
- * supervisor's own process (`--dsh-gateway-supervisor`). A bare
- * `taskkill /im dsh.exe` would be wrong twice over on a machine that runs dsh
- * from a checkout (`node … bin.ts web`) and could take the supervisor down with
- * it, so the defaults never kill by image name.
+ * BOTH platform defaults go through a shipped lifecycle helper instead of a
+ * one-liner (`taskkill /im dsh.exe`, `pkill -f "dsh web"`). Both one-liners are
+ * wrong on a machine that runs dsh from a checkout (`node … bin.ts web`), and
+ * both can take unrelated processes (or the supervisor itself) down with dsh.
+ * The helpers identify dsh by the port it LISTENS on, fall back to a narrow
+ * command-line match, and always exclude the supervisor's own process.
  */
 export function defaultScripts(platform = process.platform) {
   if (platform === 'win32') {
-    // The Windows path goes through the shipped lifecycle helper (service/
-    // dsh-lifecycle.ps1) instead of a cmd one-liner: it matches dsh by command
-    // line, never by image name, and always excludes the supervisor's own
-    // process so a stop can never take the supervisor down with dsh.
-    const helper = join(dirname(fileURLToPath(import.meta.url)), '..', 'service', 'dsh-lifecycle.ps1')
     // `{port}` reaches the helper as its positional PORT argument.
+    const helper = join(dirname(fileURLToPath(import.meta.url)), '..', 'service', 'dsh-lifecycle.ps1')
     const ps = (action) => `powershell -NoProfile -ExecutionPolicy Bypass -File "${helper}" ${action} {port}`
     return {
       shell: 'cmd',
@@ -63,17 +60,18 @@ export function defaultScripts(platform = process.platform) {
       status: ps('status'),
     }
   }
+  // POSIX (macOS and Linux): same contract, implemented in sh. The helper starts
+  // dsh detached (`nohup … &`) so it survives the supervisor, refuses to start
+  // when `dsh` cannot be found (rather than silently succeeding), and passes
+  // --no-open so a remote start never pops a browser on the machine.
+  const helper = join(dirname(fileURLToPath(import.meta.url)), '..', 'service', 'dsh-lifecycle.sh')
+  const sh = (action) => `sh "${helper}" ${action} {port}`
   return {
-    // POSIX. `nohup … &` so the child survives the invoking shell; the
-    // supervisor tracks the real pid itself when it can.
     shell: 'sh',
-    start: 'nohup dsh web --port {port} >/dev/null 2>&1 &',
-    stop: 'pkill -f "dsh web"',
+    start: sh('start'),
+    stop: sh('stop'),
     restart: '',
-    // Optional liveness probe: exit 0 when dsh is running. Without it the
-    // supervisor only knows what it last started/stopped itself (in "script"
-    // mode), so a crash outside its control is reported as still running.
-    status: 'pgrep -f "dsh web" >/dev/null',
+    status: sh('status'),
   }
 }
 
@@ -137,6 +135,20 @@ function envMap(value) {
 }
 
 /**
+ * The POSIX defaults shipped up to 0.2.2. Releases stored these verbatim in
+ * daemon.json on first save, so an existing machine kept them after the
+ * lifecycle helper shipped. Their start line opens a browser on every remote
+ * start, and their probes match the `pnpm dsh web` wrapper instead of the real
+ * dsh — an exact match is therefore not a user customization and is upgraded
+ * on READ.
+ */
+const LEGACY_POSIX_DEFAULTS = Object.freeze({
+  start: 'nohup dsh web --port {port} >/dev/null 2>&1 &',
+  stop: 'pkill -f "dsh web"',
+  status: 'pgrep -f "dsh web" >/dev/null',
+})
+
+/**
  * Normalize an untrusted daemon config (browser input, hand-edited file) into
  * the canonical shape. Unknown keys are dropped; every field type is coerced.
  */
@@ -145,7 +157,7 @@ export function normalizeDaemonConfig(input, platform = process.platform) {
   const cfg = input && typeof input === 'object' ? input : {}
   const scripts = cfg.scripts && typeof cfg.scripts === 'object' ? cfg.scripts : {}
   const child = cfg.child && typeof cfg.child === 'object' ? cfg.child : {}
-  return {
+  const normalized = {
     enabled: cfg.enabled === true,
     stopTimeoutMs: clampTimeout(cfg.stopTimeoutMs ?? defaults.stopTimeoutMs),
     logFile: str(cfg.logFile),
@@ -162,6 +174,14 @@ export function normalizeDaemonConfig(input, platform = process.platform) {
       status: str(scripts.status, defaults.scripts.status),
     },
   }
+  if (platform !== 'win32') {
+    for (const key of ['start', 'stop', 'status']) {
+      if (normalized.scripts[key] === LEGACY_POSIX_DEFAULTS[key]) {
+        normalized.scripts[key] = defaults.scripts[key]
+      }
+    }
+  }
+  return normalized
 }
 
 export function readDaemonConfig(dir) {

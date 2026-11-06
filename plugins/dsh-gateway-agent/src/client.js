@@ -300,10 +300,10 @@ window.__ModuleLoader__.load({
         if (!action) return wantEnabled ? '已保存。守护进程会按新脚本执行启动/停止/重启。' : '已保存：守护进程服务已关闭。'
         if (action === 'started') return '已保存：守护进程已启动' + (sup.detail ? '（' + sup.detail + '）' : '') + '。'
         if (action === 'already-running') return '已保存：守护进程此前已在运行。'
-        if (action === 'stopped') return '已保存：守护进程已停止。' + (sup.restartedByService ? ' 注意：它随即又被服务管理器拉起——要真正关掉请用 systemctl / Stop-ScheduledTask 停掉那个服务。' : '')
+        if (action === 'stopped') return '已保存：守护进程已停止。' + (sup.restartedByService ? ' 注意：它随即又被服务管理器拉起——要真正关掉请用 systemctl / launchctl / Stop-ScheduledTask 停掉那个服务。' : '')
         if (action === 'not-running') return '已保存：守护进程本来就没有运行。'
         if (action === 'refused') return '已保存，但没有停止守护进程：' + (sup.detail || '当前记录的进程不是本插件的守护进程') + '。'
-        return '已保存，但启停守护进程失败：' + (sup.detail || action) + '。装成系统服务（README「启动 / 关闭守护进程」）更可靠。'
+        return '已保存，但启停守护进程失败：' + (sup.detail || action) + '。装成系统服务（插件包 service/ 下的 launchd / systemd / 计划任务安装脚本）更可靠。'
       }
 
       function save() {
@@ -333,9 +333,9 @@ window.__ModuleLoader__.load({
         }
       }
 
-      var startPh = isWin ? 'powershell -NoProfile -ExecutionPolicy Bypass -File "<插件目录>\\service\\dsh-lifecycle.ps1" start {port}' : 'nohup dsh web --port {port} >/dev/null 2>&1 &'
-      var stopPh = isWin ? 'powershell -NoProfile -ExecutionPolicy Bypass -File "<插件目录>\\service\\dsh-lifecycle.ps1" stop {port}' : 'pkill -f "dsh web"'
-      var statusPh = isWin ? 'powershell -NoProfile -ExecutionPolicy Bypass -File "<插件目录>\\service\\dsh-lifecycle.ps1" status {port}' : 'pgrep -f "dsh web" >/dev/null'
+      var startPh = isWin ? 'powershell -NoProfile -ExecutionPolicy Bypass -File "<插件目录>\\service\\dsh-lifecycle.ps1" start {port}' : 'sh "<插件目录>/service/dsh-lifecycle.sh" start {port}'
+      var stopPh = isWin ? 'powershell -NoProfile -ExecutionPolicy Bypass -File "<插件目录>\\service\\dsh-lifecycle.ps1" stop {port}' : 'sh "<插件目录>/service/dsh-lifecycle.sh" stop {port}'
+      var statusPh = isWin ? 'powershell -NoProfile -ExecutionPolicy Bypass -File "<插件目录>\\service\\dsh-lifecycle.ps1" status {port}' : 'sh "<插件目录>/service/dsh-lifecycle.sh" status {port}'
 
       return createElement(
         'div',
@@ -349,7 +349,7 @@ window.__ModuleLoader__.load({
         createElement(
           'p',
           { style: S.hint },
-          '点「保存守护设置」会按勾选状态启动 / 停止这个守护进程（勾上就启动，取消就停掉）。要开机、重启后自动常驻，请照 README「启动 / 关闭守护进程」把它装成系统服务。',
+          '点「保存守护设置」会按勾选状态启动 / 停止这个守护进程（勾上就启动，取消就停掉）。要开机、重启后自动常驻，请用插件包 service/ 下的安装脚本把它装成系统服务：macOS 用 install-supervisor-launchd.sh，Windows 用 install-supervisor-task.ps1，Linux 用 dsh-gateway-supervisor.service。',
         ),
         createElement(
           'label',
@@ -405,7 +405,7 @@ window.__ModuleLoader__.load({
         DaemonField({ label: '停止脚本', value: scripts.stop, placeholder: stopPh, onChange: function (v) { patchScripts({ stop: v }) }, narrow: narrow, rows: 2 }),
         DaemonField({ label: '重启脚本（可选）', hint: '留空则用「停止 + 启动」', value: scripts.restart, placeholder: '留空', onChange: function (v) { patchScripts({ restart: v }) }, narrow: narrow, rows: 2 }),
         DaemonField({ label: '状态探测脚本（可选）', hint: '退出码 0 表示 dsh 正在运行；用于识别脚本模式下的意外退出', value: scripts.status, placeholder: statusPh, onChange: function (v) { patchScripts({ status: v }) }, narrow: narrow, rows: 2 }),
-        DaemonField({ label: '子进程命令（可选，优先于启动脚本）', hint: '由守护进程直接 spawn 为受管子进程，可精确停止（SIGTERM → SIGKILL）', value: child.command, placeholder: 'dsh web --port {port}', onChange: function (v) { patchChild({ command: v }) }, narrow: narrow, rows: 2 }),
+        DaemonField({ label: '子进程命令（可选，优先于启动脚本）', hint: '由守护进程直接 spawn 为受管子进程，可精确停止（SIGTERM → SIGKILL）；远程启动请带 --no-open，否则 dsh 会在客户机上弹浏览器', value: child.command, placeholder: 'dsh web --no-open --port {port}', onChange: function (v) { patchChild({ command: v }) }, narrow: narrow, rows: 2 }),
         createElement(
           'div',
           { style: S.kv },

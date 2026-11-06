@@ -34,13 +34,14 @@ param(
   [string]$Port = '3080',
 
   # Match string for the dsh process command line. Deliberately narrow: the
-  # literal `dsh web` (also `dsh.exe web` / `dsh.cmd web`), NOT a bare `\bdsh\b`.
-  # A bare word match also hits every unrelated command line that merely
-  # CONTAINS a `.dsh` path (`C:\Users\x\.dsh\...`, `dsh-remote-workspaces`,
-  # `dsh-context`), and a `stop` issued while dsh is already down would kill
-  # those instead of doing nothing. This scan is only the fallback for when the
-  # port probe below cannot see the listener.
-  [string]$Pattern = '\bdsh(?:\.exe|\.cmd)?[" ]+web\b',
+  # literal `dsh web` (also `dsh.exe web` / `dsh.cmd web`) or the source-checkout
+  # form `node ... bin.ts web`, NOT a bare `\bdsh\b`. A bare word match also hits
+  # every unrelated command line that merely CONTAINS a `.dsh` path
+  # (`C:\Users\x\.dsh\...`, `dsh-remote-workspaces`, `dsh-context`), and a `stop`
+  # issued while dsh is already down would kill those instead of doing nothing.
+  # This scan is only the fallback for when the port probe below cannot see the
+  # listener.
+  [string]$Pattern = '\bdsh(?:\.exe|\.cmd)?[" ]+web\b|\bbin\.ts[" ]+web\b',
 
   # Any command line containing one of these is never touched: the supervisor
   # itself and this helper. Two more markers are appended below; these two are the
@@ -49,6 +50,16 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Validate the port up front: it is interpolated into a command line and into a
+# VBScript string literal below, so a hand-edited daemon.json must not be able to
+# inject either.
+$PortNumber = 0
+if (-not [int]::TryParse($Port, [ref]$PortNumber) -or $PortNumber -lt 1 -or $PortNumber -gt 65535) {
+  Write-Host "dsh: invalid port '$Port'"
+  exit 2
+}
+$Port = [string]$PortNumber
 
 # Keep every MESSAGE in this file ASCII. The supervisor captures this script's
 # stdout through a pipe and decodes it as UTF-8, while Windows PowerShell 5.1
@@ -152,23 +163,91 @@ switch ($Action) {
       Write-Host 'dsh: already running'
       exit 0
     }
+    # What to launch: `dsh` from PATH, or the source checkout in the current
+    # directory (child.cwd, or the directory the plugin launched the supervisor
+    # from). A checkout has no dsh.exe; its entry needs node + tsx, exactly like
+    # the POSIX helper.
+    $nodeExe = (Get-Command node -CommandType Application -ErrorAction SilentlyContinue |
+      Select-Object -First 1).Source
+    $checkoutEntry = $null
+    $checkoutMode = $null
     if (-not (Get-Command dsh -ErrorAction SilentlyContinue)) {
-      Write-Host 'dsh: the "dsh" command is not on PATH - give the start script (scripts.start) your own command, or put dsh on PATH'
-      Write-Host 'dsh: for a checkout install use scripts.start = node --import tsx/esm apps/cli/src/bin.ts web --no-open --port {port} with child.cwd = the checkout root'
-      exit 1
+      if ($nodeExe) {
+        if (Test-Path -LiteralPath '.\apps\cli\src\bin.ts') {
+          $checkoutEntry = (Resolve-Path -LiteralPath '.\apps\cli\src\bin.ts').Path
+          $checkoutMode = 'tsx'
+        } elseif (Test-Path -LiteralPath '.\apps\cli\lib\bin.js') {
+          $checkoutEntry = (Resolve-Path -LiteralPath '.\apps\cli\lib\bin.js').Path
+          $checkoutMode = 'lib'
+        }
+      }
+      if (-not $checkoutEntry) {
+        Write-Host 'dsh: neither "dsh" on PATH nor a checkout in the current directory'
+        Write-Host 'dsh: put dsh on PATH, set scripts.start to the full command, or set child.cwd to the checkout root'
+        exit 1
+      }
     }
-    Write-Host "dsh: starting (dsh web --port $Port)"
+    if ($checkoutEntry) {
+      $command = if ($checkoutMode -eq 'tsx') {
+        "`"$nodeExe`" --import tsx/esm `"$checkoutEntry`" web --no-open --port $Port"
+      } else {
+        "`"$nodeExe`" `"$checkoutEntry`" web --no-open --port $Port"
+      }
+      Write-Host "dsh: starting (checkout: $checkoutEntry)"
+    } else {
+      $command = "cmd /c dsh web --no-open --port $Port"
+      Write-Host "dsh: starting (dsh web --no-open --port $Port)"
+    }
     # Start dsh OUTSIDE this process tree, through the WMI service. Windows Task
     # Scheduler runs a task's action inside a job object and kills that whole tree
     # when the task stops (or when the action process exits), so a dsh created as an
     # ordinary child - `start`, Start-Process, spawn() - is killed together with the
     # supervisor. That breaks the supervisor's one promise: stopping supervision
     # must never stop dsh. Win32_Process.Create puts the new process outside the
-    # job (verified on Windows 10/11, and in an S4U task session). cmd is the
-    # launcher so a .cmd/.ps1 `dsh` shim on PATH still resolves.
-    $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-      CommandLine      = "cmd /c dsh web --port $Port"
-      CurrentDirectory = (Get-Location).Path
+    # job (verified on Windows 10/11, and in an S4U task session).
+    #
+    # It must ALSO stay invisible. Win32_Process.Create accepts no creation flags,
+    # so a console command created directly by WMI allocates a brand-new console
+    # in the user's session: a black window that stays up for dsh's whole lifetime.
+    # wscript.exe is a GUI-subsystem host -- no console of its own -- and
+    # WScript.Shell.Run(..., 0, False) starts the command with window style 0, so
+    # no console is ever shown. In PATH mode cmd is the launcher, so a .cmd/.ps1
+    # `dsh` shim resolves; in checkout mode the command is node itself. Either way
+    # dsh stays outside the task's job because wscript was created outside it.
+    # --no-open also keeps the default browser from popping up on the machine.
+    $wscript = Join-Path $env:SystemRoot 'System32\wscript.exe'
+    $vbs = $null
+    try {
+      $dataDir = if ($env:DSH_HOME) {
+        Join-Path $env:DSH_HOME 'dsh-gateway-agent'
+      } else {
+        Join-Path $env:USERPROFILE '.dsh\dsh-gateway-agent'
+      }
+      New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+      $vbs = Join-Path $dataDir 'start-dsh-hidden.vbs'
+      # VBScript escapes an embedded quote by doubling it. The command is ours,
+      # but escape anyway so a future change cannot break out of the string.
+      $escaped = $command.Replace('"', '""')
+      $content = "Set shell = CreateObject(`"WScript.Shell`")`r`n" +
+        "shell.Run `"$escaped`", 0, False`r`n"
+      Set-Content -LiteralPath $vbs -Value $content -Encoding ASCII
+    } catch {
+      $vbs = $null
+    }
+    if ($vbs -and (Test-Path -LiteralPath $wscript)) {
+      $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+        CommandLine      = "`"$wscript`" //nologo `"$vbs`""
+        CurrentDirectory = (Get-Location).Path
+      }
+    } else {
+      # Windows Server Core / hardened images can lack wscript. Starting dsh still
+      # beats not starting it; the console window is the lesser evil and is called
+      # out so it is not mistaken for a silent regression.
+      Write-Host 'dsh: wscript.exe unavailable - starting with a visible console window'
+      $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+        CommandLine      = $command
+        CurrentDirectory = (Get-Location).Path
+      }
     }
     if ($created.ReturnValue -ne 0) {
       Write-Host "dsh: could not start it (Win32_Process.Create returned $($created.ReturnValue))"

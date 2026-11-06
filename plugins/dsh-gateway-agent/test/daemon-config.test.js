@@ -43,7 +43,37 @@ check(!winScripts.stop.includes('taskkill'), 'windows stop default never kills b
 check(winScripts.stop.includes('dsh-lifecycle.ps1'), 'windows stop default goes through the shipped helper')
 check(winScripts.status.includes('dsh-lifecycle.ps1'), 'windows status default goes through the shipped helper')
 check(winScripts.start.includes('{port}'), 'windows start default carries the {port} placeholder')
-check(defaultScripts('linux').stop.includes('pkill'), 'posix stop default uses pkill')
+// POSIX must not match by the `dsh web` command line: a checkout runs
+// `node … bin.ts web` (no match at all) and `pnpm dsh web` leaves only the
+// wrapper matching, so a stop reported success while dsh kept listening.
+const posixScripts = defaultScripts('linux')
+check(posixScripts.stop.includes('dsh-lifecycle.sh'), 'posix stop default goes through the shipped helper')
+check(posixScripts.status.includes('dsh-lifecycle.sh'), 'posix status default goes through the shipped helper')
+check(posixScripts.start.includes('dsh-lifecycle.sh'), 'posix start default goes through the shipped helper')
+check(!posixScripts.stop.includes('pkill'), 'posix defaults never kill by the too-broad "dsh web" pattern')
+check(!posixScripts.status.includes('pgrep'), 'posix defaults never probe by the too-broad "dsh web" pattern')
+check(defaultScripts('darwin').start === posixScripts.start, 'macOS uses the same POSIX helper as Linux')
+
+// Versions up to 0.2.2 persisted those defaults verbatim, so existing machines
+// never saw the helper (or its --no-open). An exact match is upgraded on read;
+// anything the operator actually edited is left alone.
+const legacy = normalizeDaemonConfig(
+  {
+    scripts: {
+      start: 'nohup dsh web --port {port} >/dev/null 2>&1 &',
+      stop: 'pkill -f "dsh web"',
+      status: 'pgrep -f "dsh web" >/dev/null',
+    },
+  },
+  'darwin',
+)
+check(legacy.scripts.start.includes('dsh-lifecycle.sh'), 'a legacy POSIX start default is upgraded on read')
+check(legacy.scripts.stop.includes('dsh-lifecycle.sh'), 'a legacy POSIX stop default is upgraded on read')
+check(legacy.scripts.status.includes('dsh-lifecycle.sh'), 'a legacy POSIX status default is upgraded on read')
+const customStart = normalizeDaemonConfig({ scripts: { start: 'nohup dsh web --no-open --port {port} &' } }, 'darwin')
+check(customStart.scripts.start === 'nohup dsh web --no-open --port {port} &', 'a customized start script is preserved')
+const winLegacy = normalizeDaemonConfig({ scripts: { start: 'nohup dsh web --port {port} >/dev/null 2>&1 &' } }, 'win32')
+check(winLegacy.scripts.start.includes('nohup dsh web'), 'the POSIX upgrade is not applied on Windows')
 
 // ---- round trip -------------------------------------------------------------
 {

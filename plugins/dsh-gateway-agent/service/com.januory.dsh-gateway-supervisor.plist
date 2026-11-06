@@ -6,13 +6,20 @@
   supervisor is what starts/stops/restarts dsh on the gateway's request. If dsh
   is also managed by launchd, pick ONE owner — the supervisor.
 
-  Install:
-    1. Resolve the supervisor entry installed with the plugin:
-         node -e "console.log(require.resolve('@januory/dsh-gateway-agent/src/daemon.js'))"
-       Replace SUPERVISOR_ENTRY below with that path (no quotes needed here).
-    2. Write the file to ~/Library/LaunchAgents/com.januory.dsh-gateway-supervisor.plist
-    3. launchctl load -w ~/Library/LaunchAgents/com.januory.dsh-gateway-supervisor.plist
-    4. launchctl list | grep dsh-gateway   /   tail -f ~/Library/Logs/dsh-gateway-supervisor.log
+  REFERENCE ONLY — install with the script, which resolves the real paths:
+      ./install-supervisor-launchd.sh            # install
+      ./install-supervisor-launchd.sh status
+      ./install-supervisor-launchd.sh uninstall
+
+  Two things break a hand-edited copy on a stock Mac:
+    * launchd's PATH is /usr/bin:/bin:/usr/sbin:/sbin, so `/usr/bin/env node`
+      cannot find a Homebrew (/opt/homebrew/bin, /usr/local/bin) or nvm node.
+      Use an ABSOLUTE node path below, never `/usr/bin/env node`.
+    * the supervisor runs the lifecycle scripts in that same minimal PATH, so
+      `dsh` must be on the PATH recorded here as well.
+
+  The script handles both and uses `launchctl bootstrap gui/$UID` (the supported
+  API; `load -w` above is the legacy fallback).
 
   KeepAlive restarts the SUPERVISOR if it dies, and the supervisor's bootstrap
   brings dsh back up when its liveness probe says dsh is down. A dsh that
@@ -27,8 +34,8 @@
 
     <key>ProgramArguments</key>
     <array>
-      <string>/usr/bin/env</string>
-      <string>node</string>
+      <!-- Absolute path; see the PATH note above. -->
+      <string>/usr/local/bin/node</string>
       <string>SUPERVISOR_ENTRY</string>
     </array>
 
@@ -37,6 +44,10 @@
       <!-- Same $DSH_HOME the plugin/dsh uses; omit to default to ~/.dsh. -->
       <key>DSH_HOME</key>
       <string>/Users/YOUR_USER/.dsh</string>
+      <!-- launchd's minimal PATH plus the directories a Homebrew/nvm install
+           lives in, so the supervisor's `dsh web` start script resolves. -->
+      <key>PATH</key>
+      <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     </dict>
 
     <key>RunAtLoad</key>

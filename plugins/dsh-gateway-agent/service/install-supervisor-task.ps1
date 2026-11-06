@@ -19,14 +19,14 @@
 # and overwrite the user environment variable with it).
 #
 # The task runs at logon and restarts on failure, and it deliberately does NOT show
+# a console window: it is registered as a non-interactive (S4U) task, falling back
+# to an interactive task launched through a GUI-subsystem VBScript host (no console
+# at all, unlike `powershell -WindowStyle Hidden`, which flashes one).
 # A one-minute repetition watchdog also re-runs the task, so a supervisor that
 # dies is back within a minute (restart-on-failure alone does not fire for a
-# killed action process).
-# a console window: it is registered as a non-interactive (S4U) task, falling back
-# to an interactive task whose launcher hides its own window. Re-run this script
-# after updating the plugin to pick up changes; `uninstall` first stops the old task
-# (and any leftover supervisor process) so two supervisors cannot fight over the
-# same machine.
+# killed action process). Re-run this script after updating the plugin to pick up
+# changes; `uninstall` first stops the old task (and any leftover supervisor
+# process) so two supervisors cannot fight over the same machine.
 #
 # Restarting the SUPERVISOR also brings dsh back up (bootstrap checks the liveness
 # probe); a dsh that crashes while the supervisor stays up is reported as `exited`
@@ -201,19 +201,34 @@ try {
   $registered = $true
   Write-Host 'Registered as a non-interactive task (no console window).'
 } catch {
-  Write-Host "S4U logon not permitted ($($_.Exception.Message)); falling back to a hidden window."
+  Write-Host "S4U logon not permitted ($($_.Exception.Message)); falling back to a windowless launcher."
 }
 
 if (-not $registered) {
-  # Same task, but launched through PowerShell with its window hidden: no visible
-  # console, and PowerShell stays the parent so stopping the task still stops node.
-  $hiddenAction = New-ScheduledTaskAction -Execute 'powershell.exe' `
-    -Argument "-NoProfile -WindowStyle Hidden -Command `"& '$node' '$entry'`"" `
+  # Same task, but launched through a GUI-subsystem VBScript host. wscript.exe has
+  # no console of its own and starts node with window style 0, so nothing is ever
+  # shown -- unlike `powershell -WindowStyle Hidden`, which still flashes a console
+  # every time the task starts (including every watchdog tick). Run(..., 0, True)
+  # WAITS, so wscript stays the parent inside the task's job: stopping the task
+  # still stops node.
+  $dataDir = Join-Path $DshHome 'dsh-gateway-agent'
+  New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+  $launcher = Join-Path $dataDir 'supervisor-hidden.vbs'
+  $run = '""' + $node + '"" ""' + $entry + '""'
+  $content = "Set shell = CreateObject(`"WScript.Shell`")`r`n" +
+    "shell.Run `"$run`", 0, True`r`n"
+  Set-Content -LiteralPath $launcher -Value $content -Encoding ASCII
+  $wscript = Join-Path $env:SystemRoot 'System32\wscript.exe'
+  if (-not (Test-Path -LiteralPath $wscript)) {
+    throw "cannot register '$TaskName': S4U was refused and $wscript is missing (needed for the windowless fallback)"
+  }
+  $hiddenAction = New-ScheduledTaskAction -Execute $wscript `
+    -Argument "//nologo `"$launcher`"" `
     -WorkingDirectory $env:USERPROFILE
   try {
     $principal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Limited
     Register-ScheduledTask -TaskName $TaskName -Action $hiddenAction -Trigger $triggers -Settings $settings -Principal $principal -Force | Out-Null
-    Write-Host 'Registered as an interactive task with a hidden window.'
+    Write-Host 'Registered as an interactive task through a windowless launcher.'
   } catch {
     throw "cannot register '$TaskName' for '$taskUser' (S4U was refused and the interactive fallback failed too): $($_.Exception.Message)"
   }
