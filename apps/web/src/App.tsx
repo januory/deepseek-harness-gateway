@@ -44,6 +44,11 @@ function Shell({ me, onLogout }: { me: PublicUser; onLogout: () => void }) {
   const items = NAV.filter((n) => n.visible(me))
   const active = items.some((n) => n.key === view) ? view : items[0].key
 
+  function openConsole(machine: MachineView) {
+    setConsoleMachine(machine)
+    setNavOpen(false)
+  }
+
   function selectNav(key: ViewKey) {
     setConsoleMachine(null)
     setView(key)
@@ -52,12 +57,13 @@ function Shell({ me, onLogout }: { me: PublicUser; onLogout: () => void }) {
 
   return (
     <div className="shell">
-      {navOpen ? <div className="sidebar-backdrop" onClick={() => setNavOpen(false)} /> : null}
-      <aside className={`sidebar ${navOpen ? 'sidebar--open' : ''}`}>
-        <div className="sidebar__brand">
-          DSH-Gateway
-          <small>Deepseek-Harness 网关</small>
-          {appVersion ? <span className="sidebar__version">v{appVersion}</span> : null}
+      {navOpen && !consoleMachine ? <div className="sidebar-backdrop" onClick={() => setNavOpen(false)} /> : null}
+      {!consoleMachine ? (
+        <aside className={`sidebar ${navOpen ? 'sidebar--open' : ''}`}>
+          <div className="sidebar__brand">
+            DSH-Gateway
+            <small>Deepseek-Harness 网关</small>
+            {appVersion ? <span className="sidebar__version">v{appVersion}</span> : null}
           <a
             className="sidebar__github"
             href="https://github.com/januory/deepseek-harness-gateway"
@@ -69,38 +75,39 @@ function Shell({ me, onLogout }: { me: PublicUser; onLogout: () => void }) {
             </svg>
             GitHub
           </a>
-        </div>
-        <button className="sidebar__close" aria-label="关闭菜单" onClick={() => setNavOpen(false)}>
-          ✕
-        </button>
-        <nav>
-          {items.map((n) => (
-            <button
-              key={n.key}
-              className={`nav-item ${active === n.key && !consoleMachine ? 'nav-item--active' : ''}`}
-              onClick={() => selectNav(n.key)}
-            >
-              {n.label}
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar__user">
-          <div className="who">
-            <RoleBadge role={me.role} />
-            <div className="who__row">
-              <strong className="who__name">{me.id}</strong>
-              <button className="who__logout" onClick={onLogout} aria-label="退出登录" title="退出登录">
-                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                  <polyline points="16 17 21 12 16 7" />
-                  <line x1="21" y1="12" x2="9" y2="12" />
-                </svg>
-                退出
+          </div>
+          <button className="sidebar__close" aria-label="关闭菜单" onClick={() => setNavOpen(false)}>
+            ✕
+          </button>
+          <nav>
+            {items.map((n) => (
+              <button
+                key={n.key}
+                className={`nav-item ${active === n.key && !consoleMachine ? 'nav-item--active' : ''}`}
+                onClick={() => selectNav(n.key)}
+              >
+                {n.label}
               </button>
+            ))}
+          </nav>
+          <div className="sidebar__user">
+            <div className="who">
+              <RoleBadge role={me.role} />
+              <div className="who__row">
+                <strong className="who__name">{me.id}</strong>
+                <button className="who__logout" onClick={onLogout} aria-label="退出登录" title="退出登录">
+                  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                  </svg>
+                  退出
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      </aside>
+        </aside>
+      ) : null}
       <main className={`main ${consoleMachine ? 'main--console' : ''}`}>
         {!consoleMachine ? (
           <button className="hamburger" aria-label="打开菜单" onClick={() => setNavOpen(true)}>
@@ -111,7 +118,7 @@ function Shell({ me, onLogout }: { me: PublicUser; onLogout: () => void }) {
           <ConsoleView machine={consoleMachine} onBack={() => setConsoleMachine(null)} />
         ) : (
           <div className="main__inner">
-            {active === 'machines' ? <MachinesView me={me} onOpenConsole={setConsoleMachine} /> : null}
+            {active === 'machines' ? <MachinesView me={me} onOpenConsole={openConsole} /> : null}
             {active === 'users' ? <UsersView me={me} /> : null}
             {active === 'assignments' ? <AssignmentsView me={me} /> : null}
             {active === 'pairing' ? <PairingCodesView me={me} /> : null}
