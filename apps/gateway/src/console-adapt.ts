@@ -114,8 +114,7 @@ html,body{height:100%}
    nothing; the toggle button lives in _logoRow (class ..._iconButton). */
 body.dsh-gw-mobile [class$="_logoRow"] [class*="_iconButton"],body.dsh-gw-mobile [class$="_newSession"]{min-width:44px;min-height:44px}
 /* Collapsed rail on phones: pin it to a 0-width track so the sidebar is
-   fully hidden and the conversation fills the frame — the floating toggle
-   (ADAPT_JS) is then the collapsed rail's only phone entry. The AppFrame's
+   fully hidden and the conversation fills the frame. The AppFrame's
    native narrow solve keeps a 56px icon rail, which has no place on a
    390px phone; the iOS-verified dsh-web reference zeros the track instead.
    (A WebKit "conversation blanks when a queued message is steered in"
@@ -201,9 +200,8 @@ body.dsh-gw-mobile [class$="_overlay"] [class$="_panel"] [class$="_tabs"] [class
 `
 
 /**
- * The injected script: viewport gate + a small floating toggle (the collapsed
- * sidebar's only phone entry) + a debug pill behind ?gwAdaptDebug=1. Runs in
- * the console page (classic browser scope; no imports).
+ * The injected script: viewport gate + a debug pill behind ?gwAdaptDebug=1.
+ * Runs in the console page (classic browser scope; no imports).
  */
 const ADAPT_JS = `
 (function () {
@@ -279,7 +277,6 @@ const ADAPT_JS = `
   }
 
   var ACTIVE = 'dsh-gw-mobile'
-  var FAB_ID = 'dshGwMobileFab'
   var pill = null
 
   function isMobile () {
@@ -310,33 +307,6 @@ const ADAPT_JS = `
     }, 150)
   }
 
-  function ensureFab () {
-    if (document.getElementById(FAB_ID) !== null || !document.body) return
-    var fab = document.createElement('button')
-    fab.id = FAB_ID
-    fab.type = 'button'
-    fab.setAttribute('aria-label', 'Open sidebar')
-    fab.title = 'Open sidebar'
-    fab.style.cssText = [
-      'position:fixed', 'left:calc(10px + env(safe-area-inset-left))',
-      'bottom:calc(180px + env(safe-area-inset-bottom))', 'z-index:2147482999',
-      'width:44px', 'height:44px', 'border-radius:14px',
-      'border:1px solid rgba(127,127,127,.35)', 'background:rgba(30,30,36,.68)',
-      'color:#fff', 'display:flex', 'align-items:center', 'justify-content:center',
-      'cursor:pointer', 'box-shadow:0 2px 10px rgba(0,0,0,.3)'
-    ].join(';')
-    fab.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>'
-    fab.addEventListener('click', toggleSidebar)
-    document.body.appendChild(fab)
-  }
-
-  function syncFab () {
-    ensureFab()
-    var f = document.getElementById(FAB_ID)
-    if (!f) return
-    f.style.display = document.body.classList.contains(ACTIVE) && collapsed() ? '' : 'none'
-  }
-
   function pillText () {
     var c = document.querySelector('[class$="_centerCol"]')
     var s = document.querySelector('[class$="_scroll"]')
@@ -364,7 +334,6 @@ const ADAPT_JS = `
     if (!document.body) return
     var m = isMobile()
     document.body.classList.toggle(ACTIVE, m)
-    syncFab()
     if (pill === null) ensurePill()
     if (pill !== null) pill.textContent = pillText()
   }
