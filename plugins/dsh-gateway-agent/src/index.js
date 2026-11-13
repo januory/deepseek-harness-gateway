@@ -29,6 +29,7 @@ import {
 import { configDir, createConfigStore, sanitizeConfig, CLIENT_FIELDS } from './config.js'
 import { nextBackoff, backoffDelay } from './backoff.js'
 import { loopbackSameOriginHeaders } from './origin.js'
+import { createOperatorCredential, hasProviderApi, registerOperatorProvider } from './operator-auth.js'
 import { readDaemonConfig, writeDaemonConfig, readDaemonRuntime } from './daemon-config.js'
 import { applySupervision, supervisorAlive } from './supervisor-control.js'
 
@@ -48,10 +49,12 @@ const DEBUG = ['1', 'true', 'yes'].includes(String(process.env.DSH_AGENT_DEBUG |
 // ---------------------------------------------------------------------------
 
 /**
- * Programmatically mint the operator browser-session cookie for loopback
- * authority `127.0.0.1:<dshPort>` using the in-process Connection service
- * (ADR-0010 B3(b)). The cookie is signed by the persistent credential secret,
- * so it stays valid across dsh restarts (only the launch token rotates).
+ * LEGACY hosts only (dsh < 0.2.2-rc.2): programmatically mint the operator
+ * browser-session cookie for loopback authority `127.0.0.1:<dshPort>` using the
+ * in-process Connection service (ADR-0010 B3(b)). The cookie is signed by the
+ * persistent credential secret, so it stays valid across dsh restarts (only
+ * the launch token rotates). Newer hosts removed both methods from Connection;
+ * there the agent registers an authentication provider instead (operator-auth.js).
  * @param {{authenticatedUrl(baseUrl: string): string; authorizeIndex(req: unknown, res: unknown): unknown}} connection
  * @param {number} dshPort
  * @returns {string | undefined} cookie header value, or undefined on failure.
@@ -138,6 +141,8 @@ class Connection {
     this.backoffMs = RECONNECT_BASE_MS
     this.lastSeen = 0
     this.operatorCookie = ''
+    this.operatorCredential = null
+    this.authMode = 'none'
     this.dshPort = 3080
     this.dshVersion = ''
     this.rttMs = null
@@ -352,7 +357,18 @@ class Connection {
   }
 
   setOperatorCookie(cookie) {
-    if (cookie) this.operatorCookie = cookie
+    if (cookie) {
+      this.operatorCookie = cookie
+      if (this.authMode === 'none') this.authMode = 'cookie'
+    }
+  }
+
+  /** New hosts: admit relayed requests through our registered provider. */
+  setOperatorCredential(credential) {
+    if (credential) {
+      this.operatorCredential = credential
+      this.authMode = 'provider'
+    }
   }
 
   // Request bodies arrive as binary frames after the relay_request JSON.
@@ -390,6 +406,8 @@ class Connection {
     const reqHeaders = loopbackSameOriginHeaders(headers, this.dshPort)
     const cookie = this.effectiveCookie()
     if (cookie) reqHeaders.cookie = cookie
+    // Overwrites any browser-supplied copy: only this process knows the secret.
+    if (this.operatorCredential) reqHeaders[this.operatorCredential.header] = this.operatorCredential.secret
 
     const send = (obj) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj))
@@ -440,9 +458,14 @@ class Connection {
 
   handleWsOpen(ws, payload) {
     const { channel, path, headers } = payload
-    const wsHeaders = { ...(headers || {}) }
+    // Same loopback same-origin rewrite as the HTTP path: dsh's Host/Origin
+    // fence must see one consistent loopback client, and lower-collapsing the
+    // map means our credential slots overwrite any browser-supplied spelling
+    // instead of being sent alongside it.
+    const wsHeaders = loopbackSameOriginHeaders(headers, this.dshPort)
     const cookie = this.effectiveCookie()
     if (cookie) wsHeaders.cookie = cookie
+    if (this.operatorCredential) wsHeaders[this.operatorCredential.header] = this.operatorCredential.secret
 
     const u = new WebSocket(`ws://127.0.0.1:${this.dshPort}${path}`, { headers: wsHeaders })
     const entry = { u, queue: [] }
@@ -479,6 +502,9 @@ class Connection {
       gatewayUrl: configuredUrl || this.gatewayUrl || '',
       hasNodeKey: !!this.nodeKey,
       agentVersion: AGENT_VERSION,
+      // How relayed requests are admitted by the local dsh: 'provider' (new
+      // hosts), 'cookie' (legacy hosts) or 'none' (no admission yet → 401).
+      authMode: this.authMode,
       // Daemon supervision, for the settings card. The plugin is NOT the
       // supervisor: it reports the config it wrote plus the state file the
       // standalone supervisor keeps fresh — the supervisor owns the rest.
@@ -551,6 +577,8 @@ export default function apply(ctx) {
     return undefined
   }
 
+  // In-memory only (ADR-0010 §6): a fresh secret per activation, never persisted.
+  const credential = createOperatorCredential()
   const conn = new Connection(() => {}, mintCookie, configStore)
 
   const service = {
@@ -659,12 +687,18 @@ export default function apply(ctx) {
     conn.connect(cfg.gatewayUrl, cfg.pairingCode ?? '', cfg)
   }
 
-  // Mint the operator browser-session cookie in-process (ADR-0010 B3(b)), then
-  // connect only AFTER the cookie is ready — avoids a 401 race where the first
-  // relayed request arrives before the async mint completes.
+  // Operator admission (ADR-0010 B3(b)), two host generations. Either way we
+  // connect only AFTER admission is in place — avoids a 401 race where the
+  // first relayed request arrives before the cookie/provider is ready.
+  //
+  // Legacy dsh (< 0.2.2-rc.2): Connection exposes BrowserAuth; mint the
+  // browser-session cookie in-process.
   ctx.inject(['connection'], (cctx) => {
-    console.log('[dsh-gateway-agent] connection inject fired')
-    connectionService = cctx.get('connection')
+    const connection = cctx.get('connection')
+    // New host: the provider inject below owns admission and the connect.
+    if (hasProviderApi(connection)) return () => {}
+    console.log('[dsh-gateway-agent] connection inject fired (legacy cookie host)')
+    connectionService = connection
     if (connectionService && typeof connectionService.authenticatedUrl === 'function' && typeof connectionService.authorizeIndex === 'function') {
       const cookie = mintCookie()
       if (cookie) {
@@ -678,6 +712,19 @@ export default function apply(ctx) {
     }
     maybeConnect()
     return () => {}
+  })
+
+  // dsh ≥ 0.2.2-rc.2: Connection removed BrowserAuth; register an
+  // authentication provider that admits relayed requests by our header secret.
+  ctx.inject(['connection', 'connection.authentication'], (cctx) => {
+    const connection = cctx.get('connection')
+    if (!hasProviderApi(connection)) return () => {}
+    console.log('[dsh-gateway-agent] connection inject fired (provider host)')
+    const dispose = registerOperatorProvider(connection, credential)
+    conn.setOperatorCredential(credential)
+    console.log('[dsh-gateway-agent] operator auth: connection provider registered')
+    maybeConnect()
+    return dispose
   })
 
   console.log('[dsh-gateway-agent] apply registered (waiting for connection service)')

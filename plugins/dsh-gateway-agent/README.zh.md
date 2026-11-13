@@ -43,7 +43,7 @@ dsh plugin --profile web add ./plugins/dsh-gateway-agent
 
 ## 工作原理
 
-插件由 dsh host 面（Node）与浏览器客户端里的一张设置卡共同组成。host 面拨号 `gatewayUrl`，完成配对码 + HMAC 挑战应答，随后把来自网关的浏览器请求与 WebSocket 流中继到本机 loopback dsh web（`127.0.0.1:<dshPort>`），并注入经 dsh Connection 服务在进程内签发的操作员 cookie。每条中继请求都会被重建为**一致的同源 loopback 请求**：除重写 `Host` 外，agent 还把 `Origin`（以及 `Referer`）声明为 `http://127.0.0.1:<dshPort>`，因此**要求 `Origin === Host` 的第三方插件路由**（例如插件市场的 POST 接口）在网关隧道下同样可用。
+插件由 dsh host 面（Node）与浏览器客户端里的一张设置卡共同组成。host 面拨号 `gatewayUrl`，完成配对码 + HMAC 挑战应答，随后把来自网关的浏览器请求与 WebSocket 流中继到本机 loopback dsh web（`127.0.0.1:<dshPort>`），并注入操作员凭据：agent 向 dsh 的 `connection.authentication` 注册自己的认证 provider，用一个**仅存于内存、每次启动重新生成**的密钥请求头认账。每条中继请求（HTTP 与 WebSocket 皆然）都会被重建为**一致的同源 loopback 请求**：除重写 `Host` 外，agent 还把 `Origin`（以及 `Referer`）声明为 `http://127.0.0.1:<dshPort>`，因此**要求 `Origin === Host` 的第三方插件路由**（例如插件市场的 POST 接口）在网关隧道下同样可用。
 
 完整架构见[项目 README](../../README.md)。
 
